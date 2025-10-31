@@ -222,8 +222,10 @@ func DefaultStateStoreProvider(c *StateStoreConfig) (api.StateStoreFactory, erro
 	switch strings.ToLower(*c.Type) {
 	case common.StateStorePebble:
 		return statestore.NewPebbleStateStoreFactory(c.Config)
+	case "rocksdb":
+		return statestore.NewStateStoreFactory(c.Config)
 	}
-	return statestore.NewDefaultPebbleStateStoreFactory()
+	return statestore.NewDefaultStateStoreFactory()
 }
 
 func WithConfig(config *Config) ServerOption {
