@@ -44,3 +44,15 @@ func PtrSize(ptr, size uint32) uint64 {
 func ExtractPtrSize(ptrSize uint64) (uint32, uint32) {
 	return uint32(ptrSize >> 32), uint32(ptrSize)
 }
+
+// PtrSize64 packs a 64-bit pointer and size into a uint128-like structure
+// We use two uint64 values to represent a 128-bit pointer+size pair
+type PtrSize64 struct {
+	Ptr  uint64
+	Size uint64
+}
+
+// ExtractPtrSize64 extracts pointer and size from a PtrSize64 struct
+func ExtractPtrSize64(ps PtrSize64) (uint64, uint64) {
+	return ps.Ptr, ps.Size
+}

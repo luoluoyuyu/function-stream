@@ -89,3 +89,7 @@ func (f *funcCtxImpl) GetConfig() map[string]string {
 func (f *funcCtxImpl) setSink(sink chan<- contube.Record) {
 	f.sink = sink
 }
+
+func (f *funcCtxImpl) GetStateStore() api.StateStore {
+	return f.stateStore
+}

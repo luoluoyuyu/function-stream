@@ -29,4 +29,5 @@ type FunctionContext interface {
 	DeleteState(ctx context.Context, key string) error
 	Write(record contube.Record) error
 	GetConfig() map[string]string
+	GetStateStore() StateStore
 }
