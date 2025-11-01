@@ -20,6 +20,7 @@ package statestore_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -486,4 +487,252 @@ func TestRocksDBStateStore_Close(t *testing.T) {
 
 	// Operations after close should fail or behave unpredictably
 	// (depends on implementation, but close should succeed)
+}
+
+func TestRocksDBStateStore_Iterator(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	store, err := factory.NewStateStore(nil)
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Insert multiple keys - use larger data set
+	keyGroup := []byte{0x01}
+	key := []byte{0x02}
+	namespace := []byte{0x03}
+
+	numKeys := 100
+	for i := 0; i < numKeys; i++ {
+		userKey := make([]byte, 2)
+		userKey[0] = byte(i / 256)
+		userKey[1] = byte(i % 256)
+		value := make([]byte, 64)
+		for j := 0; j < 64; j++ {
+			value[j] = byte(i*64 + j)
+		}
+		err := store.Put(ctx, keyGroup, key, namespace, userKey, value)
+		require.NoError(t, err)
+	}
+
+	// Create iterator with prefix
+	prefix := buildKeyForRocksDBTest(keyGroup, key, namespace, []byte{})
+	iterID, err := store.NewIterator(prefix)
+	require.NoError(t, err)
+	defer store.CloseIterator(iterID)
+
+	// Iterate through all keys
+	var values [][]byte
+	hasMore, err := store.HasNext(iterID)
+	require.NoError(t, err)
+	for hasMore {
+		value, err := store.Next(iterID)
+		require.NoError(t, err)
+		values = append(values, value)
+		hasMore, err = store.HasNext(iterID)
+		require.NoError(t, err)
+	}
+
+	// Verify we got all values
+	assert.Len(t, values, numKeys)
+
+	// Verify values are correct
+	expectedValues := make(map[string]bool)
+	for i := 0; i < numKeys; i++ {
+		expectedValue := make([]byte, 64)
+		for j := 0; j < 64; j++ {
+			expectedValue[j] = byte(i*64 + j)
+		}
+		expectedValues[string(expectedValue)] = true
+	}
+
+	for _, v := range values {
+		assert.True(t, expectedValues[string(v)], "Value should be present")
+	}
+}
+
+func TestRocksDBStateStore_Iterator_Prefix(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	store, err := factory.NewStateStore(nil)
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Insert keys with different prefixes - use larger data set
+	keyGroup1 := []byte{0x01}
+	keyGroup2 := []byte{0x02}
+	key := []byte{0x03}
+	namespace := []byte{0x04}
+
+	numKeys1 := 50
+	for i := 0; i < numKeys1; i++ {
+		userKey := make([]byte, 2)
+		userKey[0] = byte(i / 256)
+		userKey[1] = byte(i % 256)
+		value := make([]byte, 32)
+		for j := 0; j < 32; j++ {
+			value[j] = byte(0x10 + i)
+		}
+		err := store.Put(ctx, keyGroup1, key, namespace, userKey, value)
+		require.NoError(t, err)
+	}
+
+	numKeys2 := 30
+	for i := 0; i < numKeys2; i++ {
+		userKey := make([]byte, 2)
+		userKey[0] = byte(i / 256)
+		userKey[1] = byte(i % 256)
+		value := make([]byte, 32)
+		for j := 0; j < 32; j++ {
+			value[j] = byte(0x20 + i)
+		}
+		err := store.Put(ctx, keyGroup2, key, namespace, userKey, value)
+		require.NoError(t, err)
+	}
+
+	// Create iterator with specific prefix
+	prefix := buildKeyForRocksDBTest(keyGroup1, key, namespace, []byte{})
+	iterID, err := store.NewIterator(prefix)
+	require.NoError(t, err)
+	defer store.CloseIterator(iterID)
+
+	// Iterate through keys with first prefix
+	var values [][]byte
+	hasMore, err := store.HasNext(iterID)
+	require.NoError(t, err)
+	for hasMore {
+		value, err := store.Next(iterID)
+		require.NoError(t, err)
+		values = append(values, value)
+		hasMore, err = store.HasNext(iterID)
+		require.NoError(t, err)
+	}
+
+	// Verify we got only values from first prefix
+	assert.Len(t, values, numKeys1)
+
+	// Verify values are from keyGroup1
+	expectedValues := make(map[string]bool)
+	for i := 0; i < numKeys1; i++ {
+		expectedValue := make([]byte, 32)
+		for j := 0; j < 32; j++ {
+			expectedValue[j] = byte(0x10 + i)
+		}
+		expectedValues[string(expectedValue)] = true
+	}
+
+	for _, v := range values {
+		assert.True(t, expectedValues[string(v)], "Value should be present")
+	}
+}
+
+func TestRocksDBStateStore_Iterator_EmptyPrefix(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	store, err := factory.NewStateStore(nil)
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Insert multiple keys - use larger data set
+	numKeys := 80
+	for i := 0; i < numKeys; i++ {
+		key := fmt.Sprintf("key%03d", i)
+		value := make([]byte, 128)
+		for j := 0; j < 128; j++ {
+			value[j] = byte(i*128 + j)
+		}
+		err := store.PutState(ctx, key, value)
+		require.NoError(t, err)
+	}
+
+	// Create iterator with empty prefix (iterate all)
+	iterID, err := store.NewIterator([]byte{})
+	require.NoError(t, err)
+	defer store.CloseIterator(iterID)
+
+	// Iterate through all keys
+	count := 0
+	hasMore, err := store.HasNext(iterID)
+	require.NoError(t, err)
+	for hasMore {
+		_, err := store.Next(iterID)
+		require.NoError(t, err)
+		count++
+		hasMore, err = store.HasNext(iterID)
+		require.NoError(t, err)
+	}
+
+	// Verify we got at least the expected number of values
+	assert.GreaterOrEqual(t, count, numKeys)
+}
+
+func TestRocksDBStateStore_Iterator_ColumnFamily(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create function with column family
+	func1 := &model.Function{
+		Name:  "test_func",
+		State: config.ConfigMap{"column-family": "test_cf"},
+	}
+
+	store, err := factory.NewStateStore(func1)
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Insert multiple keys - use larger data set
+	keyGroup := []byte{0x01}
+	key := []byte{0x02}
+	namespace := []byte{0x03}
+
+	numKeys := 60
+	for i := 0; i < numKeys; i++ {
+		userKey := make([]byte, 2)
+		userKey[0] = byte(i / 256)
+		userKey[1] = byte(i % 256)
+		value := make([]byte, 96)
+		for j := 0; j < 96; j++ {
+			value[j] = byte(0x10 + i + j)
+		}
+		err := store.Put(ctx, keyGroup, key, namespace, userKey, value)
+		require.NoError(t, err)
+	}
+
+	// Create iterator
+	prefix := buildKeyForRocksDBTest(keyGroup, key, namespace, []byte{})
+	iterID, err := store.NewIterator(prefix)
+	require.NoError(t, err)
+	defer store.CloseIterator(iterID)
+
+	// Iterate through all keys
+	var values [][]byte
+	hasMore, err := store.HasNext(iterID)
+	require.NoError(t, err)
+	for hasMore {
+		value, err := store.Next(iterID)
+		require.NoError(t, err)
+		values = append(values, value)
+		hasMore, err = store.HasNext(iterID)
+		require.NoError(t, err)
+	}
+
+	// Verify we got all values
+	assert.Len(t, values, numKeys)
+}
+
+// Helper function for RocksDB tests
+func buildKeyForRocksDBTest(keyGroup, key, namespace, userKey []byte) []byte {
+	result := make([]byte, 0, len(keyGroup)+len(key)+len(namespace)+len(userKey))
+	result = append(result, keyGroup...)
+	result = append(result, key...)
+	result = append(result, namespace...)
+	result = append(result, userKey...)
+	return result
 }

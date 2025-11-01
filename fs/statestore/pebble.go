@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/functionstream/function-stream/common/config"
 	"github.com/functionstream/function-stream/common/model"
@@ -96,8 +97,10 @@ func NewDefaultPebbleStateStoreFactory() (api.StateStoreFactory, error) {
 func (fact *PebbleStateStoreFactory) NewStateStore(f *model.Function) (api.StateStore, error) {
 	if f == nil {
 		return &PebbleStateStore{
-			db:        fact.db,
-			keyPrefix: []byte{},
+			db:             fact.db,
+			keyPrefix:      []byte{},
+			iterators:      make(map[int64]*pebbleIteratorInfo),
+			nextIteratorID: 1,
 		}, nil
 	}
 	c := &PebbleStateStoreConfig{}
@@ -112,8 +115,10 @@ func (fact *PebbleStateStoreFactory) NewStateStore(f *model.Function) (api.State
 		keyPrefix = []byte(f.Name)
 	}
 	return &PebbleStateStore{
-		db:        fact.db,
-		keyPrefix: keyPrefix,
+		db:             fact.db,
+		keyPrefix:      keyPrefix,
+		iterators:      make(map[int64]*pebbleIteratorInfo),
+		nextIteratorID: 1,
 	}, nil
 }
 
@@ -121,9 +126,17 @@ func (fact *PebbleStateStoreFactory) Close() error {
 	return fact.db.Close()
 }
 
+type pebbleIteratorInfo struct {
+	iter   *pebble.Iterator
+	prefix []byte
+}
+
 type PebbleStateStore struct {
-	db        *pebble.DB
-	keyPrefix []byte
+	db             *pebble.DB
+	keyPrefix      []byte
+	iterators      map[int64]*pebbleIteratorInfo
+	nextIteratorID int64
+	iteratorMu     sync.RWMutex
 }
 
 func (s *PebbleStateStore) getKey(key string) []byte {
@@ -432,5 +445,164 @@ func (pb *PebbleStateStore) Merge(ctx context.Context, keyGroup, key, namespace,
 }
 
 func (s *PebbleStateStore) Close() error {
+	// Close all active iterators
+	s.iteratorMu.Lock()
+	for id, info := range s.iterators {
+		if info.iter != nil {
+			_ = info.iter.Close()
+		}
+		delete(s.iterators, id)
+	}
+	s.iteratorMu.Unlock()
+	return nil
+}
+
+// NewIterator creates a new iterator with the specified prefix and returns its ID.
+// The iterator will iterate over all keys that start with the given prefix.
+func (s *PebbleStateStore) NewIterator(prefix []byte) (int64, error) {
+	s.iteratorMu.Lock()
+	defer s.iteratorMu.Unlock()
+
+	// Generate a new iterator ID
+	id := s.nextIteratorID
+	s.nextIteratorID++
+
+	// Add key prefix if present
+	var fullPrefix []byte
+	if len(s.keyPrefix) > 0 {
+		fullPrefix = make([]byte, 0, len(s.keyPrefix)+len(prefix))
+		fullPrefix = append(fullPrefix, s.keyPrefix...)
+		fullPrefix = append(fullPrefix, prefix...)
+	} else {
+		fullPrefix = make([]byte, len(prefix))
+		copy(fullPrefix, prefix)
+	}
+
+	// Create a new iterator
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: fullPrefix,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to create iterator: %w", err)
+	}
+
+	// Store prefix for later validation
+	prefixCopy := make([]byte, len(prefix))
+	copy(prefixCopy, prefix)
+
+	// Seek to the prefix
+	if len(fullPrefix) > 0 {
+		iter.SeekGE(fullPrefix)
+	} else {
+		// If prefix is empty, seek to the beginning
+		iter.First()
+	}
+
+	// Store iterator info
+	s.iterators[id] = &pebbleIteratorInfo{
+		iter:   iter,
+		prefix: prefixCopy,
+	}
+
+	return id, nil
+}
+
+// HasNext checks if the iterator has a next element.
+// It returns true if there is a next element, false otherwise.
+func (s *PebbleStateStore) HasNext(id int64) (bool, error) {
+	info, exists := s.iterators[id]
+	if !exists {
+		return false, fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	if info.iter == nil {
+		return false, fmt.Errorf("iterator with id %d is closed", id)
+	}
+
+	// Check if iterator is valid
+	if !info.iter.Valid() {
+		return false, nil
+	}
+
+	// If prefix is specified, check if current key still has the prefix
+	if len(info.prefix) > 0 {
+		keyBytes := info.iter.Key()
+		// Check if key still has the prefix (considering keyPrefix)
+		fullPrefix := info.prefix
+		if len(s.keyPrefix) > 0 {
+			fullPrefix = make([]byte, 0, len(s.keyPrefix)+len(info.prefix))
+			fullPrefix = append(fullPrefix, s.keyPrefix...)
+			fullPrefix = append(fullPrefix, info.prefix...)
+		}
+		if !bytes.HasPrefix(keyBytes, fullPrefix) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// Next returns the value of the next element and advances the iterator.
+// It returns the value as a byte slice.
+func (s *PebbleStateStore) Next(id int64) ([]byte, error) {
+	info, exists := s.iterators[id]
+	if !exists {
+		return nil, fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	if info.iter == nil {
+		return nil, fmt.Errorf("iterator with id %d is closed", id)
+	}
+
+	// Check if iterator is valid
+	if !info.iter.Valid() {
+		return nil, fmt.Errorf("iterator has no more elements")
+	}
+
+	// If prefix is specified, verify current key has the prefix
+	if len(info.prefix) > 0 {
+		keyBytes := info.iter.Key()
+		fullPrefix := info.prefix
+		if len(s.keyPrefix) > 0 {
+			fullPrefix = make([]byte, 0, len(s.keyPrefix)+len(info.prefix))
+			fullPrefix = append(fullPrefix, s.keyPrefix...)
+			fullPrefix = append(fullPrefix, info.prefix...)
+		}
+		if !bytes.HasPrefix(keyBytes, fullPrefix) {
+			return nil, fmt.Errorf("iterator has no more elements")
+		}
+	}
+
+	// Get the value
+	valueBytes := info.iter.Value()
+
+	// Return a copy of the data since iterator data may be invalidated on Next()
+	result := make([]byte, len(valueBytes))
+	copy(result, valueBytes)
+
+	// Advance iterator
+	info.iter.Next()
+
+	return result, nil
+}
+
+// CloseIterator closes the iterator with the specified ID.
+func (s *PebbleStateStore) CloseIterator(id int64) error {
+	s.iteratorMu.Lock()
+	defer s.iteratorMu.Unlock()
+
+	info, exists := s.iterators[id]
+	if !exists {
+		return fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	// Close the iterator
+	if info.iter != nil {
+		_ = info.iter.Close()
+	}
+
+	// Remove from map
+	delete(s.iterators, id)
+
 	return nil
 }

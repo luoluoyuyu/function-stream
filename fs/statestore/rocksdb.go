@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/functionstream/function-stream/common/config"
 	"github.com/functionstream/function-stream/common/model"
@@ -116,42 +117,16 @@ func NewRocksDBStateStoreFactory(cfgMap config.ConfigMap) (api.StateStoreFactory
 	}, nil
 }
 
-func NewDefaultRocksDBStateStoreFactory() (api.StateStoreFactory, error) {
-	dir, err := os.MkdirTemp("", "")
-	if err != nil {
-		return nil, err
-	}
-
-	opts := grocksdb.NewDefaultOptions()
-	opts.SetCreateIfMissing(true)
-
-	// Set MergeOperator to enable Merge operations
-	opts.SetMergeOperator(&appendOp{})
-
-	db, err := grocksdb.OpenDb(opts, dir)
-	if err != nil {
-		return nil, err
-	}
-
-	ro := grocksdb.NewDefaultReadOptions()
-	wo := grocksdb.NewDefaultWriteOptions()
-	wo.SetSync(false)
-
-	return &RocksDBStateStoreFactory{
-		db: db,
-		ro: ro,
-		wo: wo,
-	}, nil
-}
-
 func (fact *RocksDBStateStoreFactory) NewStateStore(f *model.Function) (api.StateStore, error) {
 	if f == nil {
 		return &RocksDBStateStore{
-			db:           fact.db,
-			ro:           fact.ro,
-			wo:           fact.wo,
-			columnFamily: nil,
-			cfName:       "",
+			db:             fact.db,
+			ro:             fact.ro,
+			wo:             fact.wo,
+			columnFamily:   nil,
+			cfName:         "",
+			iterators:      make(map[int64]*iteratorInfo),
+			nextIteratorID: 1,
 		}, nil
 	}
 
@@ -188,11 +163,13 @@ func (fact *RocksDBStateStoreFactory) NewStateStore(f *model.Function) (api.Stat
 	}
 
 	return &RocksDBStateStore{
-		db:           fact.db,
-		ro:           fact.ro,
-		wo:           fact.wo,
-		columnFamily: cfHandle,
-		cfName:       cfName,
+		db:             fact.db,
+		ro:             fact.ro,
+		wo:             fact.wo,
+		columnFamily:   cfHandle,
+		cfName:         cfName,
+		iterators:      make(map[int64]*iteratorInfo),
+		nextIteratorID: 1,
 	}, nil
 }
 
@@ -218,12 +195,20 @@ func (fact *RocksDBStateStoreFactory) Close() error {
 	return nil
 }
 
+type iteratorInfo struct {
+	iter   *grocksdb.Iterator
+	prefix []byte
+}
+
 type RocksDBStateStore struct {
-	db           *grocksdb.DB
-	ro           *grocksdb.ReadOptions
-	wo           *grocksdb.WriteOptions
-	columnFamily *grocksdb.ColumnFamilyHandle
-	cfName       string
+	db             *grocksdb.DB
+	ro             *grocksdb.ReadOptions
+	wo             *grocksdb.WriteOptions
+	columnFamily   *grocksdb.ColumnFamilyHandle
+	cfName         string
+	iterators      map[int64]*iteratorInfo
+	nextIteratorID int64
+	iteratorMu     sync.RWMutex
 }
 
 // getKey is no longer needed as we use column family for isolation
@@ -521,6 +506,16 @@ func (rb *RocksDBStateStore) Merge(ctx context.Context, keyGroup, key, namespace
 }
 
 func (s *RocksDBStateStore) Close() error {
+	// Close all active iterators
+	s.iteratorMu.Lock()
+	for id, info := range s.iterators {
+		if info.iter != nil {
+			info.iter.Close()
+		}
+		delete(s.iterators, id)
+	}
+	s.iteratorMu.Unlock()
+
 	// Destroy column family handle if we own one
 	// ReadOptions and WriteOptions are owned by factory, don't destroy them here
 	// DB is also owned by factory
@@ -528,6 +523,135 @@ func (s *RocksDBStateStore) Close() error {
 		s.columnFamily.Destroy()
 		s.columnFamily = nil
 	}
+	return nil
+}
+
+// NewIterator creates a new iterator with the specified prefix and returns its ID.
+// The iterator will iterate over all keys that start with the given prefix.
+func (s *RocksDBStateStore) NewIterator(prefix []byte) (int64, error) {
+	s.iteratorMu.Lock()
+	defer s.iteratorMu.Unlock()
+
+	// Generate a new iterator ID
+	id := s.nextIteratorID
+	s.nextIteratorID++
+
+	// Create a new iterator
+	var iter *grocksdb.Iterator
+	if s.columnFamily != nil {
+		iter = s.db.NewIteratorCF(s.ro, s.columnFamily)
+	} else {
+		iter = s.db.NewIterator(s.ro)
+	}
+
+	// Store prefix for later validation
+	prefixCopy := make([]byte, len(prefix))
+	copy(prefixCopy, prefix)
+
+	// Seek to the prefix
+	if len(prefix) > 0 {
+		iter.Seek(prefix)
+	} else {
+		// If prefix is empty, seek to the beginning
+		iter.SeekToFirst()
+	}
+
+	// Store iterator info
+	s.iterators[id] = &iteratorInfo{
+		iter:   iter,
+		prefix: prefixCopy,
+	}
+
+	return id, nil
+}
+
+// HasNext checks if the iterator has a next element.
+// It returns true if there is a next element, false otherwise.
+func (s *RocksDBStateStore) HasNext(id int64) (bool, error) {
+	info, exists := s.iterators[id]
+	if !exists {
+		return false, fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	if info.iter == nil {
+		return false, fmt.Errorf("iterator with id %d is closed", id)
+	}
+
+	// Check if iterator is valid
+	if !info.iter.Valid() {
+		return false, nil
+	}
+
+	// If prefix is specified, check if current key still has the prefix
+	if len(info.prefix) > 0 {
+		keyBytes := info.iter.Key()
+		keyData := keyBytes.Data()
+		if !bytes.HasPrefix(keyData, info.prefix) {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// Next returns the value of the next element and advances the iterator.
+// It returns the value as a byte slice.
+func (s *RocksDBStateStore) Next(id int64) ([]byte, error) {
+	info, exists := s.iterators[id]
+	if !exists {
+		return nil, fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	if info.iter == nil {
+		return nil, fmt.Errorf("iterator with id %d is closed", id)
+	}
+
+	// Check if iterator is valid
+	if !info.iter.Valid() {
+		return nil, fmt.Errorf("iterator has no more elements")
+	}
+
+	// If prefix is specified, verify current key has the prefix
+	if len(info.prefix) > 0 {
+		keyBytes := info.iter.Key()
+		keyData := keyBytes.Data()
+		if !bytes.HasPrefix(keyData, info.prefix) {
+			return nil, fmt.Errorf("iterator has no more elements")
+		}
+	}
+
+	// Get the value
+	valueBytes := info.iter.Value()
+	valueData := valueBytes.Data()
+
+	// Return a copy of the data since iterator data may be invalidated on Next()
+	result := make([]byte, len(valueData))
+	copy(result, valueData)
+
+	// Advance iterator
+	info.iter.Next()
+
+	return result, nil
+}
+
+// CloseIterator closes the iterator with the specified ID.
+func (s *RocksDBStateStore) CloseIterator(id int64) error {
+	s.iteratorMu.Lock()
+	defer s.iteratorMu.Unlock()
+
+	info, exists := s.iterators[id]
+	if !exists {
+		return fmt.Errorf("iterator with id %d not found", id)
+	}
+
+	// Close the iterator
+	if info.iter != nil {
+		info.iter.Close()
+	}
+
+	// Remove from map
+	delete(s.iterators, id)
+
 	return nil
 }
 

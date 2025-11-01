@@ -39,6 +39,16 @@ type StateStore interface {
 	DeleteAll(ctx context.Context, keyGroup, key, namespace []byte) error
 	Merge(ctx context.Context, keyGroup, key, namespace, userKey []byte, value []byte) error
 
+	// Iterator operations for efficient prefix-based iteration
+	// NewIterator creates a new iterator with the specified prefix and returns its ID
+	NewIterator(prefix []byte) (int64, error)
+	// HasNext checks if the iterator has a next element
+	HasNext(id int64) (bool, error)
+	// Next returns the value of the next element and advances the iterator
+	Next(id int64) ([]byte, error)
+	// CloseIterator closes the iterator with the specified ID
+	CloseIterator(id int64) error
+
 	Close() error
 }
 
