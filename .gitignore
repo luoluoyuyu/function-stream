@@ -108,9 +108,17 @@ dist
 bin/
 .DS_Store
 
+# CI artifacts
+.github/workflows/*.log
+
 benchmark/*.pprof
 
 operator/vendor/
+
+# RocksDB in bin/lib directory (build artifacts)
+bin/lib/rocksdb/lib/
+bin/lib/rocksdb/src/
+bin/lib/rocksdb/include/rocksdb/
 
 ._*
 **/.DS_Store

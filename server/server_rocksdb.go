@@ -1,3 +1,5 @@
+//go:build rocksdb
+
 /*
  * Copyright 2024 Function Stream Org.
  *
@@ -14,20 +16,14 @@
  * limitations under the License.
  */
 
-package common
+package server
 
-const (
-	PulsarTubeType = "pulsar"
-	MemoryTubeType = "memory"
-	HttpTubeType   = "http"
-	EmptyTubeType  = "empty"
-	NatsTubeType   = "nats"
-
-	WASMRuntime     = "wasm"
-	ExternalRuntime = "external"
-
-	RuntimeArchiveConfigKey = "archive"
-
-	StateStorePebble  = "pebble"
-	StateStoreRocksDB = "rocksdb"
+import (
+	"github.com/functionstream/function-stream/common/config"
+	"github.com/functionstream/function-stream/fs/api"
+	"github.com/functionstream/function-stream/fs/statestore"
 )
+
+func newRocksDBStateStoreFactory(cfg config.ConfigMap) (api.StateStoreFactory, error) {
+	return statestore.NewRocksDBStateStoreFactory(cfg)
+}

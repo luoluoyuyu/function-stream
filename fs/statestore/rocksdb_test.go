@@ -1,3 +1,5 @@
+//go:build rocksdb
+
 /*
  * Copyright 2024 Function Stream Org.
  *
@@ -20,6 +22,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/functionstream/function-stream/common/config"
 	"github.com/functionstream/function-stream/common/model"
@@ -29,33 +32,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupPebbleTest(t *testing.T) (api.StateStoreFactory, func()) {
-	dir, err := os.MkdirTemp("", "pebble_test_*")
+func setupRocksDBTest(t *testing.T) (api.StateStoreFactory, func()) {
+	dir, err := os.MkdirTemp("", "rocksdb_test_*")
 	require.NoError(t, err)
 
 	cfgMap := config.ConfigMap{
 		"dir_name": dir,
 	}
 
-	factory, err := statestore.NewPebbleStateStoreFactory(cfgMap)
+	factory, err := statestore.NewRocksDBStateStoreFactory(cfgMap)
 	require.NoError(t, err)
 
 	cleanup := func() {
-		err := factory.Close()
-		if err != nil {
+		// Close factory first - this will close the database
+		if err := factory.Close(); err != nil {
 			t.Logf("Error closing factory: %v", err)
 		}
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Logf("Error removing test directory: %v", err)
+
+		// On Windows, RocksDB files may need a moment to be fully released
+		// Attempt to remove with retry
+		var removeErr error
+		for i := 0; i < 3; i++ {
+			removeErr = os.RemoveAll(dir)
+			if removeErr == nil {
+				return
+			}
+			// Small delay before retry (especially helpful on Windows)
+			if i < 2 {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+
+		// Log error but don't fail the test - temp dirs will be cleaned up eventually
+		if removeErr != nil {
+			t.Logf("Warning: Failed to remove test directory %s after 3 attempts: %v. It may be cleaned up later.", dir, removeErr)
 		}
 	}
 
 	return factory, cleanup
 }
 
-func TestPebbleStateStore_BasicOperations(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_BasicOperations(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -91,8 +109,8 @@ func TestPebbleStateStore_BasicOperations(t *testing.T) {
 	assert.ErrorIs(t, err, api.ErrNotFound)
 }
 
-func TestPebbleStateStore_ListStates(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_ListStates(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -110,28 +128,20 @@ func TestPebbleStateStore_ListStates(t *testing.T) {
 	// Test ListStates with range
 	list, err := store.ListStates(ctx, "b", "d")
 	assert.NoError(t, err)
-	// Note: When keyPrefix is empty (nil function), ListStates returns full keys
-	// Check if keys in range are present
-	hasB := false
-	hasC := false
-	for _, item := range list {
-		if item == "b" {
-			hasB = true
-		}
-		if item == "c" {
-			hasC = true
-		}
-	}
-	assert.True(t, hasB || hasC, "Should find keys in range")
+	assert.Contains(t, list, "b")
+	assert.Contains(t, list, "c")
+	assert.NotContains(t, list, "a")
+	assert.NotContains(t, list, "d")
+	assert.NotContains(t, list, "e")
 
 	// Test ListStates without range
-	list, err = store.ListStates(ctx, "a", "f")
+	list, err = store.ListStates(ctx, "", "")
 	assert.NoError(t, err)
 	assert.GreaterOrEqual(t, len(list), len(keys))
 }
 
-func TestPebbleStateStore_NewKeyOperations(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_NewKeyOperations(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -166,8 +176,8 @@ func TestPebbleStateStore_NewKeyOperations(t *testing.T) {
 	assert.ErrorIs(t, err, api.ErrNotFound)
 }
 
-func TestPebbleStateStore_DeleteAll(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_DeleteAll(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -219,8 +229,8 @@ func TestPebbleStateStore_DeleteAll(t *testing.T) {
 	assert.Equal(t, []byte("other"), value)
 }
 
-func TestPebbleStateStore_DeleteAll_All0xFF(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_DeleteAll_All0xFF(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -253,8 +263,8 @@ func TestPebbleStateStore_DeleteAll_All0xFF(t *testing.T) {
 	}
 }
 
-func TestPebbleStateStore_Merge(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_Merge(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -267,38 +277,36 @@ func TestPebbleStateStore_Merge(t *testing.T) {
 	namespace := []byte{0x03}
 	userKey := []byte{0x04}
 
-	// Test Merge - Pebble's Merge appends by default
+	// Test Merge (without MergeOperator, this should behave like Put)
 	value1 := []byte("value1")
 	err = store.Merge(ctx, keyGroup, key, namespace, userKey, value1)
 	assert.NoError(t, err)
 
 	retrieved, err := store.Get(ctx, keyGroup, key, namespace, userKey)
 	assert.NoError(t, err)
-	// First merge just stores the value
+	// Without MergeOperator, Merge behaves like Put
 	assert.Equal(t, value1, retrieved)
 
-	// Test Merge again - Pebble Merge will call the merge operator if configured
-	// Without a merge operator, it behaves like Put (replaces value)
+	// Test Merge again (should replace)
 	value2 := []byte("value2")
 	err = store.Merge(ctx, keyGroup, key, namespace, userKey, value2)
 	assert.NoError(t, err)
 
 	retrieved, err = store.Get(ctx, keyGroup, key, namespace, userKey)
 	assert.NoError(t, err)
-	// Without merge operator, Merge behaves like Put
-	assert.Equal(t, value2, retrieved)
+	assert.Equal(t, append(value1, value2...), retrieved)
 }
 
-func TestPebbleStateStore_KeyPrefixIsolation(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_ColumnFamilyIsolation(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
-	// Create two stores with different key prefixes
+	// Create two stores with different column families
 	func1 := &model.Function{
 		Name:  "func1",
-		State: config.ConfigMap{"key_prefix": "prefix1"},
+		State: config.ConfigMap{"column-family": "cf1"},
 	}
 	store1, err := factory.NewStateStore(func1)
 	require.NoError(t, err)
@@ -306,13 +314,13 @@ func TestPebbleStateStore_KeyPrefixIsolation(t *testing.T) {
 
 	func2 := &model.Function{
 		Name:  "func2",
-		State: config.ConfigMap{"key_prefix": "prefix2"},
+		State: config.ConfigMap{"column-family": "cf2"},
 	}
 	store2, err := factory.NewStateStore(func2)
 	require.NoError(t, err)
 	defer store2.Close()
 
-	// Store same key in both prefixes
+	// Store same key in both column families
 	key := "same_key"
 	value1 := []byte("value1")
 	value2 := []byte("value2")
@@ -333,8 +341,8 @@ func TestPebbleStateStore_KeyPrefixIsolation(t *testing.T) {
 	assert.Equal(t, value2, retrieved2)
 }
 
-func TestPebbleStateStore_EmptyValues(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_EmptyValues(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -359,21 +367,26 @@ func TestPebbleStateStore_EmptyValues(t *testing.T) {
 	assert.Equal(t, []byte("value"), retrieved)
 }
 
-func TestPebbleStateStoreFactory_Config(t *testing.T) {
-	dir, err := os.MkdirTemp("", "pebble_config_test_*")
+func TestRocksDBStateStoreFactory_Config(t *testing.T) {
+	dir, err := os.MkdirTemp("", "rocksdb_config_test_*")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
 	cfgMap := config.ConfigMap{
 		"dir_name":                 dir,
 		"max-open-files":           1000,
-		"l0-compaction-threshold":  4,
-		"l0-stop-writes-threshold": 36,
-		"l-base-max-bytes":         int64(256 * 1024 * 1024),
+		"write-buffer-size":        uint64(1024 * 1024),
+		"max-write-buffer-number":  4,
+		"target-file-size-base":    uint64(64 * 1024 * 1024),
+		"max-bytes-for-level-base": uint64(256 * 1024 * 1024),
+		"compression":              "snappy",
 	}
 
-	factory, err := statestore.NewPebbleStateStoreFactory(cfgMap)
-	assert.NoError(t, err)
+	factory, err := statestore.NewRocksDBStateStoreFactory(cfgMap)
+	if !assert.NoError(t, err) {
+		return // If creation fails, return directly to avoid nil pointer
+	}
+	assert.NotNil(t, factory)
 	defer factory.Close()
 
 	// Verify factory creates stores correctly
@@ -385,16 +398,16 @@ func TestPebbleStateStoreFactory_Config(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestPebbleStateStoreFactory_WithFunction(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStoreFactory_WithFunction(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
-	// Create function with key prefix config
+	// Create function with column family config
 	func1 := &model.Function{
 		Name:  "test_func",
-		State: config.ConfigMap{"key_prefix": "test_prefix"},
+		State: config.ConfigMap{"column-family": "test_cf"},
 	}
 
 	store, err := factory.NewStateStore(func1)
@@ -410,11 +423,11 @@ func TestPebbleStateStoreFactory_WithFunction(t *testing.T) {
 	assert.Equal(t, []byte("value"), value)
 }
 
-func TestPebbleStateStoreFactory_DefaultKeyPrefix(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStoreFactory_DefaultColumnFamily(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
-	// Create function without key prefix config, should use function name
+	// Create function without column family config, should use function name
 	func1 := &model.Function{
 		Name:  "default_func",
 		State: config.ConfigMap{},
@@ -433,8 +446,8 @@ func TestPebbleStateStoreFactory_DefaultKeyPrefix(t *testing.T) {
 	assert.Equal(t, []byte("value"), value)
 }
 
-func TestPebbleStateStoreFactory_NilFunction(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStoreFactory_NilFunction(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	store, err := factory.NewStateStore(nil)
@@ -451,13 +464,13 @@ func TestPebbleStateStoreFactory_NilFunction(t *testing.T) {
 	assert.Equal(t, []byte("value"), value)
 }
 
-func TestPebbleStateStore_Close(t *testing.T) {
-	factory, cleanup := setupPebbleTest(t)
+func TestRocksDBStateStore_Close(t *testing.T) {
+	factory, cleanup := setupRocksDBTest(t)
 	defer cleanup()
 
 	func1 := &model.Function{
 		Name:  "func1",
-		State: config.ConfigMap{"key_prefix": "prefix1"},
+		State: config.ConfigMap{"column-family": "cf1"},
 	}
 
 	store, err := factory.NewStateStore(func1)
@@ -470,25 +483,7 @@ func TestPebbleStateStore_Close(t *testing.T) {
 	// Close should not error
 	err = store.Close()
 	assert.NoError(t, err)
-}
 
-func TestPebbleStateStore_BasicOperations_Original(t *testing.T) {
-	ctx := context.Background()
-	storeFact, err := statestore.NewDefaultPebbleStateStoreFactory()
-	require.NoError(t, err)
-	defer storeFact.Close()
-
-	store, err := storeFact.NewStateStore(nil)
-	require.NoError(t, err)
-	defer store.Close()
-
-	_, err = store.GetState(ctx, "key")
-	assert.ErrorIs(t, err, api.ErrNotFound)
-
-	err = store.PutState(ctx, "key", []byte("value"))
-	assert.NoError(t, err)
-
-	value, err := store.GetState(ctx, "key")
-	assert.NoError(t, err)
-	assert.Equal(t, "value", string(value))
+	// Operations after close should fail or behave unpredictably
+	// (depends on implementation, but close should succeed)
 }

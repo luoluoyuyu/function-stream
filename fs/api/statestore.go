@@ -31,6 +31,14 @@ type StateStore interface {
 	GetState(ctx context.Context, key string) (value []byte, err error)
 	ListStates(ctx context.Context, startInclusive string, endExclusive string) (keys []string, err error)
 	DeleteState(ctx context.Context, key string) error
+
+	// Basic operations - using 4 byte[] as Key
+	Put(ctx context.Context, keyGroup, key, namespace, userKey []byte, value []byte) error
+	Get(ctx context.Context, keyGroup, key, namespace, userKey []byte) ([]byte, error)
+	Delete(ctx context.Context, keyGroup, key, namespace, userKey []byte) error
+	DeleteAll(ctx context.Context, keyGroup, key, namespace []byte) error
+	Merge(ctx context.Context, keyGroup, key, namespace, userKey []byte, value []byte) error
+
 	Close() error
 }
 

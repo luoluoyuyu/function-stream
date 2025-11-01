@@ -12,12 +12,12 @@ require (
 	github.com/go-logr/zapr v1.3.0
 	github.com/go-openapi/spec v0.21.0
 	github.com/go-playground/validator/v10 v10.11.1
+	github.com/linxGnu/grocksdb v1.7.16
 	github.com/nats-io/nats.go v1.37.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
-	github.com/linxGnu/grocksdb v1.7.16
 	github.com/tetratelabs/wazero v1.6.0
 	github.com/wirelessr/avroschema v0.0.0-20240111032105-ef4f4560e2a7
 	go.uber.org/zap v1.26.0
