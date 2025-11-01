@@ -20,10 +20,9 @@ build: build-all
 build-all: setup-rocksdb
 	@echo ""
 	@echo "Building with RocksDB support..."
-	@# Check and install dependencies
 	@chmod +x scripts/setup-rocksdb-deps.sh
 	@./scripts/setup-rocksdb-deps.sh check
-	@# Detect operating system and generate link flags
+	@echo "Generating link flags..."
 	@ROCKSDB_LIB_DIR=$$(pwd)/bin/function-stream/lib/rocksdb/lib; \
 	ROCKSDB_INCLUDE_DIR=$$(pwd)/bin/function-stream/lib/rocksdb/include; \
 	TMP_LDFLAGS=$$(mktemp); \
@@ -31,13 +30,19 @@ build-all: setup-rocksdb
 	./scripts/setup-rocksdb-deps.sh ldflags "$$ROCKSDB_LIB_DIR" "$$TMP_LDFLAGS"; \
 	CGO_LDFLAGS=$$(cat $$TMP_LDFLAGS); \
 	PKG_CONFIG_PATH="" \
-	CGO_ENABLED=1 CGO_CFLAGS="-I$$ROCKSDB_INCLUDE_DIR" CGO_LDFLAGS="$$CGO_LDFLAGS" \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="-I$$ROCKSDB_INCLUDE_DIR" \
+	CGO_LDFLAGS="$$CGO_LDFLAGS" \
 	go build -v -tags "rocksdb,grocksdb_no_link" -ldflags="-s -w" -o bin/function-stream ./cmd
 	@echo ""
 	@echo "Checking binary dependencies..."
 	@if command -v otool >/dev/null 2>&1; then \
 		echo "Binary dependencies:"; \
-		otool -L bin/function-stream 2>/dev/null | grep -v "^bin/function-stream:" | grep -v "^\t/usr/lib/" | grep -v "^\t/System/Library/" | head -10 || echo "  ✅ Only system libraries (compatible with all macOS)"; \
+		otool -L bin/function-stream 2>/dev/null | \
+			grep -v "^bin/function-stream:" | \
+			grep -v "^\t/usr/lib/" | \
+			grep -v "^\t/System/Library/" | \
+			head -10 || echo "  ✅ Only system libraries (compatible with all macOS)"; \
 	fi
 	@echo ""
 	@echo "Cleaning RocksDB files for packaging..."

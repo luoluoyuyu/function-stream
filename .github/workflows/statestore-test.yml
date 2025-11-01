@@ -33,22 +33,10 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Install system dependencies
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git libzstd-dev liblz4-dev libsnappy-dev zlib1g-dev libbz2-dev
-
-      - name: Setup RocksDB (only for rocksdb tests)
-        if: matrix.test-type == 'rocksdb'
-        run: |
-          echo "🔧 检查并安装 RocksDB 依赖..."
-          chmod +x scripts/setup-rocksdb-deps.sh
-          ./scripts/setup-rocksdb-deps.sh check || echo "依赖检查完成（可能已安装）"
-          echo ""
-          echo "🔧 安装 RocksDB 到 bin/lib 目录..."
-          make setup-rocksdb
-          echo "✅ RocksDB 安装完成"
-          ls -lh bin/lib/rocksdb/lib/ || echo "检查库文件目录..."
+          sudo apt-get install -y build-essential git curl
 
       - name: Test Pebble
         if: matrix.test-type == 'pebble'
@@ -60,43 +48,38 @@ jobs:
 
       - name: Build with Pebble
         if: matrix.test-type == 'pebble'
-        run: make build
+        run: make build-lite
 
       - name: Build with RocksDB
         if: matrix.test-type == 'rocksdb'
-        run: make build-rocksdb
+        run: make build-all
 
-      - name: Verify binary exists
+      - name: Verify binary
+        run: |
+          if [ ! -f bin/function-stream ]; then
+            echo "❌ Binary not found!"
+            exit 1
+          fi
+          echo "✅ Binary created: bin/function-stream"
+          ls -lh bin/function-stream
+
+      - name: Upload Pebble build artifacts
         if: matrix.test-type == 'pebble'
-        run: |
-          if [ ! -f bin/function-stream ]; then
-            echo "❌ Binary not found!"
-            exit 1
-          fi
-          echo "✅ Binary created: bin/function-stream"
-          ls -lh bin/function-stream
-
-      - name: Verify RocksDB binary exists
-        if: matrix.test-type == 'rocksdb'
-        run: |
-          if [ ! -f bin/function-stream ]; then
-            echo "❌ Binary not found!"
-            exit 1
-          fi
-          echo "✅ Binary created: bin/function-stream"
-          ls -lh bin/function-stream
-          if [ -f bin/lib/rocksdb/lib/librocksdb.a ]; then
-            echo "✅ RocksDB library found"
-            ls -lh bin/lib/rocksdb/lib/*.a
-          fi
-
-      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: function-stream-linux-${{ matrix.test-type }}
+          name: function-stream-linux-pebble
+          path: bin/function-stream
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload RocksDB build artifacts
+        if: matrix.test-type == 'rocksdb'
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-stream-linux-rocksdb
           path: |
             bin/function-stream
-            bin/lib/rocksdb/lib/*.a
+            bin/function-stream/lib/rocksdb/lib/*.a
           if-no-files-found: ignore
           retention-days: 7
 
@@ -112,19 +95,10 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Install dependencies
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git libzstd-dev liblz4-dev libsnappy-dev zlib1g-dev
-
-      - name: Setup RocksDB
-        run: |
-          echo "🔧 安装 RocksDB 到 bin/lib 目录..."
-          make setup-rocksdb
-          echo "✅ RocksDB 安装完成"
-          echo "验证安装:"
-          ls -lh bin/lib/rocksdb/lib/ || echo "库文件目录不存在"
-          ls -lh bin/lib/rocksdb/include/ || echo "头文件目录不存在"
+          sudo apt-get install -y build-essential git curl
 
       - name: Test Pebble
         run: make test-statestore
@@ -132,25 +106,34 @@ jobs:
       - name: Test RocksDB
         run: make test-statestore-rocksdb
 
-      - name: Build all variants
-        run: |
-          make build
-          make build-rocksdb
+      - name: Build RocksDB variant
+        run: make build-all
 
-      - name: List build artifacts
+      - name: Verify build artifacts
         run: |
-          echo "=== Build Artifacts ===" 
-          find bin -type f -executable 2>/dev/null || true
+          echo "=== Build Artifacts ==="
+          if [ -f bin/function-stream ]; then
+            echo "✅ Binary: bin/function-stream"
+            ls -lh bin/function-stream
+          else
+            echo "❌ Binary not found!"
+            exit 1
+          fi
           echo ""
           echo "=== RocksDB Libraries ==="
-          find bin/lib/rocksdb -type f 2>/dev/null || true
+          if [ -d bin/function-stream/lib/rocksdb/lib ]; then
+            ls -lh bin/function-stream/lib/rocksdb/lib/*.a 2>/dev/null || echo "No library files found"
+          else
+            echo "⚠️  RocksDB library directory not found"
+          fi
 
       - name: Upload all artifacts
         uses: actions/upload-artifact@v4
         with:
           name: function-stream-linux-complete
           path: |
-            bin/
+            bin/function-stream
+            bin/function-stream/lib/rocksdb/lib/*.a
           if-no-files-found: ignore
           retention-days: 7
 
