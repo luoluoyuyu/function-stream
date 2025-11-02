@@ -45,6 +45,18 @@ func ExtractPtrSize(ptrSize uint64) (uint32, uint32) {
 	return uint32(ptrSize >> 32), uint32(ptrSize)
 }
 
+// BytesToPtr returns a pointer and size pair for the given byte slice in a way
+// compatible with WebAssembly numeric types.
+// The returned pointer aliases the slice hence the slice must be kept alive
+// until ptr is no longer needed.
+func BytesToPtr(b []byte) (uint32, uint32) {
+	if len(b) == 0 {
+		return 0, 0
+	}
+	ptr := unsafe.Pointer(unsafe.SliceData(b))
+	return uint32(uintptr(ptr)), uint32(len(b))
+}
+
 // PtrSize64 packs a 64-bit pointer and size into a uint128-like structure
 // We use two uint64 values to represent a 128-bit pointer+size pair
 type PtrSize64 struct {

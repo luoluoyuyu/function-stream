@@ -25,32 +25,24 @@ ROCKSDB_SRC_DIR="$ROCKSDB_DIR/src"
 # 7.10.2 is a stable 7.x version compatible with grocksdb v1.7.16
 ROCKSDB_VERSION="${ROCKSDB_VERSION:-7.10.2}"
 
-# Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
 # Timing related variables
 START_TIME=0
 STEP_START_TIME=0
 
 echo_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo "[INFO] $1"
 }
 
 echo_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo "[WARN] $1"
 }
 
 echo_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo "[ERROR] $1"
 }
 
 echo_time() {
-    echo -e "${CYAN}[TIME]${NC} $1"
+    echo "[TIME] $1"
 }
 
 # Start timer
@@ -114,8 +106,7 @@ detect_os() {
 
 OS=$(detect_os)
 
-# Set library file extension (Unix systems)
-LIB_EXT=".a"
+# Set library file name
 STATIC_LIB_NAME="librocksdb.a"
 
 # Check dependencies
@@ -356,9 +347,9 @@ build_rocksdb_unix() {
     # - USE_ZLIB=0: Disable Zlib compression
     # - USE_BZIP2=0: Disable BZip2 compression
     # - OPT="-Os": Optimize for size
-    echo_info "Executing: make -j${CPU_COUNT} ROCKSDB_LITE=1 PORTABLE=1 USE_RTTI=1 DEBUG_LEVEL=0 DISABLE_WARNING_AS_ERROR=1 OPT=\"-Os\" WITH_JEMALLOC=0 WITH_MD_LIBRARY=0 WITH_NUMA=0 WITH_TBB=0 ROCKSDB_BUILD_SHARED=0 WITH_TOOLS=0 WITH_EXAMPLES=0 WITH_TESTS=0 USE_SNAPPY=0 USE_LZ4=0 USE_ZSTD=0 USE_ZLIB=0 USE_BZIP2=0 static_lib"
+    echo_info "Executing: make -j\"${CPU_COUNT}\" ROCKSDB_LITE=1 PORTABLE=1 USE_RTTI=1 DEBUG_LEVEL=0 DISABLE_WARNING_AS_ERROR=1 OPT=\"-Os\" WITH_JEMALLOC=0 WITH_MD_LIBRARY=0 WITH_NUMA=0 WITH_TBB=0 ROCKSDB_BUILD_SHARED=0 WITH_TOOLS=0 WITH_EXAMPLES=0 WITH_TESTS=0 USE_SNAPPY=0 USE_LZ4=0 USE_ZSTD=0 USE_ZLIB=0 USE_BZIP2=0 static_lib"
     
-    if ! make -j${CPU_COUNT} ROCKSDB_LITE=1 PORTABLE=1 USE_RTTI=1 DEBUG_LEVEL=0 DISABLE_WARNING_AS_ERROR=1 OPT="-Os" WITH_JEMALLOC=0 WITH_MD_LIBRARY=0 WITH_NUMA=0 WITH_TBB=0 ROCKSDB_BUILD_SHARED=0 WITH_TOOLS=0 WITH_EXAMPLES=0 WITH_TESTS=0 USE_SNAPPY=0 USE_LZ4=0 USE_ZSTD=0 USE_ZLIB=0 USE_BZIP2=0 static_lib; then
+    if ! make -j"${CPU_COUNT}" ROCKSDB_LITE=1 PORTABLE=1 USE_RTTI=1 DEBUG_LEVEL=0 DISABLE_WARNING_AS_ERROR=1 OPT="-Os" WITH_JEMALLOC=0 WITH_MD_LIBRARY=0 WITH_NUMA=0 WITH_TBB=0 ROCKSDB_BUILD_SHARED=0 WITH_TOOLS=0 WITH_EXAMPLES=0 WITH_TESTS=0 USE_SNAPPY=0 USE_LZ4=0 USE_ZSTD=0 USE_ZLIB=0 USE_BZIP2=0 static_lib; then
         echo_error "❌ Build failed"
         echo_error "Debug information:"
         echo_error "  Working directory: $(pwd)"
