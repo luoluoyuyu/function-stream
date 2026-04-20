@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{Instant, sleep};
 use tracing::{Instrument, info, info_span, warn};
 
@@ -28,7 +28,7 @@ pub struct SourceDriver {
     operator: Box<dyn SourceOperator>,
     chain_head: Option<Box<dyn OperatorDrive>>,
     ctx: TaskContext,
-    control_rx: Receiver<ControlCommand>,
+    control_rx: UnboundedReceiver<ControlCommand>,
 }
 
 impl SourceDriver {
@@ -36,7 +36,7 @@ impl SourceDriver {
         operator: Box<dyn SourceOperator>,
         chain_head: Option<Box<dyn OperatorDrive>>,
         ctx: TaskContext,
-        control_rx: Receiver<ControlCommand>,
+        control_rx: UnboundedReceiver<ControlCommand>,
     ) -> Self {
         Self {
             operator,

@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_CHECKPOINT_INTERVAL_MS: u64 = 60 * 1000;
 pub const DEFAULT_PIPELINE_PARALLELISM: u32 = 1;
 pub const DEFAULT_KEY_BY_PARALLELISM: u32 = 1;
+pub const DEFAULT_JOB_MANAGER_CONTROL_PLANE_THREADS: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StreamingJobConfig {
@@ -25,6 +26,10 @@ pub struct StreamingJobConfig {
     /// Physical parallelism for KeyBy / key-extraction operators in planned streaming graphs.
     #[serde(default)]
     pub key_by_parallelism: Option<u32>,
+    #[serde(default)]
+    pub job_manager_control_plane_threads: Option<u32>,
+    #[serde(default)]
+    pub job_manager_data_plane_threads: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -32,10 +37,15 @@ pub struct ResolvedStreamingJobConfig {
     pub checkpoint_interval_ms: u64,
     pub pipeline_parallelism: u32,
     pub key_by_parallelism: u32,
+    pub job_manager_control_plane_threads: u32,
+    pub job_manager_data_plane_threads: u32,
 }
 
 impl StreamingJobConfig {
     pub fn resolve(&self) -> ResolvedStreamingJobConfig {
+        let cpu_threads = std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(1);
         ResolvedStreamingJobConfig {
             checkpoint_interval_ms: self
                 .checkpoint_interval_ms
@@ -49,6 +59,14 @@ impl StreamingJobConfig {
                 .key_by_parallelism
                 .filter(|&p| p > 0)
                 .unwrap_or(DEFAULT_KEY_BY_PARALLELISM),
+            job_manager_control_plane_threads: self
+                .job_manager_control_plane_threads
+                .filter(|&p| p > 0)
+                .unwrap_or(DEFAULT_JOB_MANAGER_CONTROL_PLANE_THREADS),
+            job_manager_data_plane_threads: self
+                .job_manager_data_plane_threads
+                .filter(|&p| p > 0)
+                .unwrap_or(cpu_threads),
         }
     }
 }

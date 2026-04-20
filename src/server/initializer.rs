@@ -186,6 +186,8 @@ fn initialize_job_manager(config: &GlobalConfig) -> Result<()> {
     let state_config = StateConfig {
         checkpoint_interval_ms: job.checkpoint_interval_ms,
         pipeline_parallelism: job.pipeline_parallelism,
+        job_manager_control_plane_threads: job.job_manager_control_plane_threads,
+        job_manager_data_plane_threads: job.job_manager_data_plane_threads,
         per_operator_memory_bytes,
         ..StateConfig::default()
     };

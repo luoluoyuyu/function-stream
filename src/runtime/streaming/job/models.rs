@@ -13,11 +13,11 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
-use std::thread::JoinHandle;
 use std::time::Instant;
 
 use protocol::function_stream_graph::FsProgram;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::runtime::streaming::protocol::control::ControlCommand;
 
@@ -78,7 +78,7 @@ pub struct PhysicalPipeline {
     pub pipeline_id: u32,
     pub handle: Option<JoinHandle<()>>,
     pub status: Arc<RwLock<PipelineStatus>>,
-    pub control_tx: mpsc::Sender<ControlCommand>,
+    pub control_tx: mpsc::UnboundedSender<ControlCommand>,
 }
 
 pub struct PhysicalExecutionGraph {

@@ -17,10 +17,11 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::JoinHandle as TokioJoinHandle;
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use protocol::function_stream_graph::{ChainedOperator, FsProgram};
 use protocol::storage::{
@@ -79,6 +80,8 @@ pub struct StateConfig {
     pub soft_limit_ratio: f64,
     pub checkpoint_interval_ms: u64,
     pub pipeline_parallelism: u32,
+    pub job_manager_control_plane_threads: u32,
+    pub job_manager_data_plane_threads: u32,
     /// Total bytes shared by all [`crate::runtime::streaming::state::OperatorStateStore`] (global pool).
     pub per_operator_memory_bytes: u64,
 }
@@ -91,6 +94,10 @@ impl Default for StateConfig {
             soft_limit_ratio: 0.7,
             checkpoint_interval_ms: DEFAULT_CHECKPOINT_INTERVAL_MS,
             pipeline_parallelism: DEFAULT_PIPELINE_PARALLELISM,
+            job_manager_control_plane_threads: 2,
+            job_manager_data_plane_threads: std::thread::available_parallelism()
+                .map(|n| n.get() as u32)
+                .unwrap_or(1),
             per_operator_memory_bytes: DEFAULT_OPERATOR_STATE_STORE_MEMORY_BYTES,
         }
     }
@@ -128,6 +135,8 @@ pub struct JobManager {
     io_pool: Mutex<Option<IoPool>>,
     state_base_dir: PathBuf,
     state_config: StateConfig,
+    control_rt: Arc<tokio::runtime::Runtime>,
+    data_rt: Arc<tokio::runtime::Runtime>,
 }
 
 struct PreparedChain {
@@ -142,13 +151,14 @@ enum PipelineRunner {
 
 struct CheckpointCoordinatorConfig {
     job_id: String,
-    source_control_txs: Vec<mpsc::Sender<ControlCommand>>,
-    all_pipeline_control_txs: Vec<mpsc::Sender<ControlCommand>>,
+    source_control_txs: Vec<UnboundedSender<ControlCommand>>,
+    all_pipeline_control_txs: Vec<UnboundedSender<ControlCommand>>,
     job_master_rx: mpsc::Receiver<JobMasterEvent>,
     expected_pipeline_ids: HashSet<u32>,
     interval_ms: u64,
     start_epoch: u64,
     job_state_dir: PathBuf,
+    timeout: Duration,
 }
 
 impl PipelineRunner {
@@ -185,6 +195,18 @@ impl JobManager {
         state_base_dir: impl AsRef<Path>,
         state_config: StateConfig,
     ) -> Result<Self> {
+        let control_rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(state_config.job_manager_control_plane_threads.max(1) as usize)
+            .thread_name("fs-control-plane")
+            .enable_all()
+            .build()
+            .context("Failed to initialize control runtime")?;
+        let data_rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(state_config.job_manager_data_plane_threads.max(1) as usize)
+            .thread_name("fs-data-plane")
+            .enable_all()
+            .build()
+            .context("Failed to initialize data runtime")?;
         let metrics = Arc::new(NoopMetricsCollector);
         let (io_pool, io_manager_client) = IoPool::try_new(
             state_config.max_background_spills,
@@ -200,6 +222,8 @@ impl JobManager {
             io_pool: Mutex::new(Some(io_pool)),
             state_base_dir: state_base_dir.as_ref().to_path_buf(),
             state_config,
+            control_rt: Arc::new(control_rt),
+            data_rt: Arc::new(data_rt),
         })
     }
 
@@ -299,6 +323,7 @@ impl JobManager {
             interval_ms,
             start_epoch: safe_epoch + 1,
             job_state_dir: job_state_dir.clone(),
+            timeout: Duration::from_millis(interval_ms.max(1) * 3),
         });
 
         let graph = PhysicalExecutionGraph {
@@ -322,7 +347,7 @@ impl JobManager {
         let control_senders = self.extract_control_senders(job_id)?;
 
         for tx in control_senders {
-            let _ = tx.send(ControlCommand::Stop { mode: mode.clone() }).await;
+            let _ = tx.send(ControlCommand::Stop { mode: mode.clone() });
         }
 
         info!(job_id = %job_id, mode = ?mode, "Job stop signal dispatched.");
@@ -474,7 +499,10 @@ impl JobManager {
             StreamingJobRollupStatus::Reconciling
         }
     }
-    fn extract_control_senders(&self, job_id: &str) -> Result<Vec<mpsc::Sender<ControlCommand>>> {
+    fn extract_control_senders(
+        &self,
+        job_id: &str,
+    ) -> Result<Vec<mpsc::UnboundedSender<ControlCommand>>> {
         let jobs_guard = self
             .active_jobs
             .read()
@@ -541,7 +569,7 @@ impl JobManager {
             pipeline_id
         );
 
-        let (control_tx, control_rx) = mpsc::channel(64);
+        let (control_tx, control_rx) = mpsc::unbounded_channel();
         let status = Arc::new(RwLock::new(PipelineStatus::Initializing));
 
         let subtask_index = 0;
@@ -593,9 +621,7 @@ impl JobManager {
             )
         };
 
-        let handle = self
-            .spawn_worker_thread(job_id, pipeline_id, runner, Arc::clone(&status))
-            .with_context(|| format!("Failed to spawn OS thread for pipeline {}", pipeline_id))?;
+        let handle = self.spawn_worker_task(job_id, pipeline_id, runner, Arc::clone(&status));
 
         let pipeline = PhysicalPipeline {
             pipeline_id,
@@ -637,70 +663,44 @@ impl JobManager {
         })
     }
 
-    fn spawn_worker_thread(
+    fn spawn_worker_task(
         &self,
         job_id: String,
         pipeline_id: u32,
         runner: PipelineRunner,
         status: Arc<RwLock<PipelineStatus>>,
-    ) -> Result<std::thread::JoinHandle<()>> {
-        let thread_name = format!("Task-{job_id}-{pipeline_id}");
+    ) -> TokioJoinHandle<()> {
+        self.data_rt.spawn(async move {
+            if let Ok(mut st) = status.write() {
+                *st = PipelineStatus::Running;
+            }
 
-        let handle = std::thread::Builder::new()
-            .name(thread_name)
-            .spawn(move || {
-                if let Ok(mut st) = status.write() {
-                    *st = PipelineStatus::Running;
-                }
+            let execution_result = runner
+                .run()
+                .await
+                .map_err(|e| anyhow!("Execution failed: {e}"));
 
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to build current-thread Tokio runtime");
-
-                let execution_result =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        rt.block_on(async move {
-                            runner
-                                .run()
-                                .await
-                                .map_err(|e| anyhow!("Execution failed: {e}"))
-                        })
-                    }));
-
-                Self::handle_pipeline_exit(&job_id, pipeline_id, execution_result, &status);
-            })?;
-
-        Ok(handle)
+            Self::handle_pipeline_exit(&job_id, pipeline_id, execution_result, &status);
+        })
     }
 
     fn handle_pipeline_exit(
         job_id: &str,
         pipeline_id: u32,
-        thread_result: std::thread::Result<Result<()>>,
+        result: Result<()>,
         status: &RwLock<PipelineStatus>,
     ) {
-        let (final_status, is_fatal) = match thread_result {
-            Ok(Ok(_)) => {
+        let (final_status, is_fatal) = match result {
+            Ok(_) => {
                 info!(job_id = %job_id, pipeline_id = pipeline_id, "Pipeline finished gracefully.");
                 (PipelineStatus::Finished, false)
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 error!(job_id = %job_id, pipeline_id = pipeline_id, error = %e, "Pipeline failed.");
                 (
                     PipelineStatus::Failed {
                         error: e.to_string(),
                         is_panic: false,
-                    },
-                    true,
-                )
-            }
-            Err(_) => {
-                error!(job_id = %job_id, pipeline_id = pipeline_id, "Pipeline thread panicked!");
-                (
-                    PipelineStatus::Failed {
-                        error: "Unexpected panic in task thread".into(),
-                        is_panic: true,
                     },
                     true,
                 )
@@ -724,17 +724,18 @@ impl JobManager {
         &self,
         cfg: CheckpointCoordinatorConfig,
     ) -> TokioJoinHandle<()> {
-        let CheckpointCoordinatorConfig {
-            job_id,
-            source_control_txs,
-            all_pipeline_control_txs,
-            mut job_master_rx,
-            expected_pipeline_ids,
-            interval_ms,
-            start_epoch,
-            job_state_dir,
-        } = cfg;
-        tokio::spawn(async move {
+        self.control_rt.spawn(async move {
+            let CheckpointCoordinatorConfig {
+                job_id,
+                mut source_control_txs,
+                all_pipeline_control_txs,
+                mut job_master_rx,
+                expected_pipeline_ids,
+                interval_ms,
+                start_epoch,
+                job_state_dir,
+                timeout,
+            } = cfg;
             if interval_ms == 0 {
                 info!(job_id = %job_id, "Checkpoint disabled for this job");
                 return;
@@ -744,17 +745,19 @@ impl JobManager {
             interval.tick().await;
 
             let mut current_epoch: u64 = start_epoch;
-            let mut pending_checkpoints: HashMap<u64, HashSet<u32>> = HashMap::new();
-            let mut source_reports: HashMap<u64, Vec<SourceCheckpointPayload>> = HashMap::new();
-
-            async fn broadcast_checkpoint_phase2(
-                txs: &[mpsc::Sender<ControlCommand>],
-                cmd: ControlCommand,
-            ) {
-                for tx in txs {
-                    let _ = tx.send(cmd.clone()).await;
-                }
+            struct PendingCheckpoint {
+                epoch: u64,
+                missing_acks: HashSet<u32>,
+                start_time: Instant,
+                source_reports: Vec<SourceCheckpointPayload>,
             }
+            let mut active_checkpoint: Option<PendingCheckpoint> = None;
+
+            let broadcast_cmd = |cmd: ControlCommand| {
+                for tx in &all_pipeline_control_txs {
+                    let _ = tx.send(cmd.clone());
+                }
+            };
 
             loop {
                 tokio::select! {
@@ -767,23 +770,23 @@ impl JobManager {
                                 epoch,
                                 source_payloads,
                             } => {
-                                if !source_payloads.is_empty() {
-                                    source_reports
-                                        .entry(epoch)
-                                        .or_default()
-                                        .extend(source_payloads);
-                                }
-                                if let Some(pending_set) = pending_checkpoints.get_mut(&epoch) {
-                                    pending_set.remove(&pipeline_id);
+                                if let Some(pending) = &mut active_checkpoint {
+                                    if pending.epoch != epoch {
+                                        continue;
+                                    }
+                                    pending.missing_acks.remove(&pipeline_id);
+                                    if !source_payloads.is_empty() {
+                                        pending.source_reports.extend(source_payloads);
+                                    }
 
-                                    if pending_set.is_empty() {
+                                    if pending.missing_acks.is_empty() {
                                         info!(
                                             job_id = %job_id, epoch = epoch,
                                             "Checkpoint Epoch is GLOBALLY COMPLETED (phase 1); persisting metadata and notifying operators (phase 2)"
                                         );
 
-                                        let payloads = source_reports.remove(&epoch).unwrap_or_default();
-                                        let kf = decode_kafka_checkpoints_from_source_payloads(payloads, epoch);
+                                        let completed = active_checkpoint.take().expect("active checkpoint exists");
+                                        let kf = decode_kafka_checkpoints_from_source_payloads(completed.source_reports, epoch);
                                         let epoch_u32 = u32::try_from(epoch).unwrap_or(u32::MAX);
 
                                         let mut catalog_ok = true;
@@ -813,33 +816,50 @@ impl JobManager {
                                         } else {
                                             ControlCommand::AbortCheckpoint { epoch: epoch_u32 }
                                         };
-                                        broadcast_checkpoint_phase2(&all_pipeline_control_txs, phase2).await;
-
-                                        pending_checkpoints.remove(&epoch);
+                                        broadcast_cmd(phase2);
                                     }
                                 }
                             }
                             JobMasterEvent::CheckpointDecline { pipeline_id, epoch, reason } => {
-                                error!(
-                                    job_id = %job_id, epoch = epoch, pipeline_id = pipeline_id,
-                                    reason = %reason, "Checkpoint FAILED!"
-                                );
-                                if pending_checkpoints.remove(&epoch).is_some() {
-                                    source_reports.remove(&epoch);
-                                    let epoch_u32 = u32::try_from(epoch).unwrap_or(u32::MAX);
-                                    broadcast_checkpoint_phase2(
-                                        &all_pipeline_control_txs,
-                                        ControlCommand::AbortCheckpoint { epoch: epoch_u32 },
-                                    )
-                                    .await;
+                                if let Some(pending) = &active_checkpoint
+                                    && pending.epoch == epoch
+                                {
+                                    error!(
+                                        job_id = %job_id, epoch = epoch, pipeline_id = pipeline_id,
+                                        reason = %reason, "Checkpoint FAILED!"
+                                    );
+                                    broadcast_cmd(ControlCommand::AbortCheckpoint {
+                                        epoch: u32::try_from(epoch).unwrap_or(u32::MAX),
+                                    });
+                                    active_checkpoint = None;
                                 }
                             }
                         }
                     }
 
-                    _ = interval.tick(), if pending_checkpoints.is_empty() => {
+                    _ = interval.tick() => {
+                        if let Some(pending) = &active_checkpoint {
+                            if pending.start_time.elapsed() > timeout {
+                                warn!(
+                                    job_id = %job_id,
+                                    epoch = pending.epoch,
+                                    "Checkpoint timed out; aborting active epoch"
+                                );
+                                broadcast_cmd(ControlCommand::AbortCheckpoint {
+                                    epoch: u32::try_from(pending.epoch).unwrap_or(u32::MAX),
+                                });
+                            } else {
+                                continue;
+                            }
+                        }
+
+                        source_control_txs.retain(|tx| !tx.is_closed());
+                        if source_control_txs.is_empty() {
+                            info!(job_id = %job_id, "All source pipelines closed; checkpoint coordinator exiting");
+                            break;
+                        }
+
                         info!(job_id = %job_id, epoch = current_epoch, "Triggering global Checkpoint Barrier.");
-                        pending_checkpoints.insert(current_epoch, expected_pipeline_ids.clone());
 
                         let barrier = CheckpointBarrier {
                             epoch: current_epoch as u32,
@@ -847,13 +867,16 @@ impl JobManager {
                             timestamp: std::time::SystemTime::now(),
                             then_stop: false,
                         };
+                        active_checkpoint = Some(PendingCheckpoint {
+                            epoch: current_epoch,
+                            missing_acks: expected_pipeline_ids.clone(),
+                            start_time: Instant::now(),
+                            source_reports: Vec::new(),
+                        });
 
                         for tx in &source_control_txs {
                             let cmd = ControlCommand::trigger_checkpoint(barrier);
-                            if tx.send(cmd).await.is_err() {
-                                debug!(job_id = %job_id, "Source disconnected. Shutting down coordinator.");
-                                return;
-                            }
+                            let _ = tx.send(cmd);
                         }
                         current_epoch += 1;
                     }
