@@ -10,12 +10,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{Instant, sleep};
 use tracing::{Instrument, info, info_span, warn};
 
 use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::source::{SourceEvent, SourceOperator};
+use crate::runtime::streaming::api::source::{SourceCheckpointReport, SourceEvent, SourceOperator};
 use crate::runtime::streaming::error::RunError;
 use crate::runtime::streaming::execution::OperatorDrive;
 use crate::runtime::streaming::protocol::{
@@ -28,7 +28,7 @@ pub struct SourceDriver {
     operator: Box<dyn SourceOperator>,
     chain_head: Option<Box<dyn OperatorDrive>>,
     ctx: TaskContext,
-    control_rx: Receiver<ControlCommand>,
+    control_rx: UnboundedReceiver<ControlCommand>,
 }
 
 impl SourceDriver {
@@ -36,7 +36,7 @@ impl SourceDriver {
         operator: Box<dyn SourceOperator>,
         chain_head: Option<Box<dyn OperatorDrive>>,
         ctx: TaskContext,
-        control_rx: Receiver<ControlCommand>,
+        control_rx: UnboundedReceiver<ControlCommand>,
     ) -> Self {
         Self {
             operator,
@@ -154,16 +154,23 @@ impl SourceDriver {
 
     async fn handle_control(&mut self, cmd: ControlCommand) -> Result<bool, RunError> {
         let mut stop = false;
+        let mut pending_source_checkpoint: Option<(u64, SourceCheckpointReport)> = None;
 
         match &cmd {
             ControlCommand::TriggerCheckpoint { barrier } => {
                 let b: CheckpointBarrier = barrier.clone().into();
-                self.operator.snapshot_state(b, &mut self.ctx).await?;
+                let report = self.operator.snapshot_state(b, &mut self.ctx).await?;
                 self.dispatch_event(StreamEvent::Barrier(b)).await?;
+                pending_source_checkpoint = Some((b.epoch as u64, report));
             }
             ControlCommand::Commit { epoch } => {
                 self.operator
                     .commit_checkpoint(*epoch, &mut self.ctx)
+                    .await?;
+            }
+            ControlCommand::AbortCheckpoint { epoch } => {
+                self.operator
+                    .abort_checkpoint(*epoch, &mut self.ctx)
                     .await?;
             }
             ControlCommand::Stop { .. } => {
@@ -176,6 +183,10 @@ impl SourceDriver {
             && chain.handle_control(cmd, &mut self.ctx).await?
         {
             stop = true;
+        }
+
+        if let Some((epoch, report)) = pending_source_checkpoint {
+            self.ctx.send_checkpoint_ack(epoch, report.payloads).await;
         }
 
         Ok(stop)

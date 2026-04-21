@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_stream::{StreamExt, StreamMap};
 use tracing::{Instrument, info, info_span};
 
@@ -33,7 +33,7 @@ pub struct Pipeline {
     chain_head: Box<dyn OperatorDrive>,
     ctx: TaskContext,
     inboxes: Vec<BoxedEventStream>,
-    control_rx: Receiver<ControlCommand>,
+    control_rx: UnboundedReceiver<ControlCommand>,
 
     wm_tracker: WatermarkTracker,
     barrier_aligner: BarrierAligner,
@@ -45,7 +45,7 @@ impl Pipeline {
         operators: Vec<Box<dyn Operator>>,
         ctx: TaskContext,
         inboxes: Vec<BoxedEventStream>,
-        control_rx: Receiver<ControlCommand>,
+        control_rx: UnboundedReceiver<ControlCommand>,
     ) -> Result<Self, RunError> {
         let input_count = inboxes.len();
         let chain_head = ChainBuilder::build(operators)
@@ -110,6 +110,7 @@ impl Pipeline {
                                         }
                                     }
                                     AlignmentStatus::Complete => {
+                                        let epoch = barrier.epoch as u64;
                                         self.chain_head
                                             .process_event(
                                                 idx,
@@ -123,6 +124,7 @@ impl Pipeline {
                                                 active_streams.insert(i, stream);
                                             }
                                         }
+                                        self.ctx.send_checkpoint_ack(epoch, vec![]).await;
                                     }
                                 }
                             }
