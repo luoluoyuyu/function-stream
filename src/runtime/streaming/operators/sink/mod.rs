@@ -10,4 +10,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod delta;
+pub mod filesystem;
+pub mod iceberg;
 pub mod kafka;
+pub mod lancedb;
+pub mod s3;

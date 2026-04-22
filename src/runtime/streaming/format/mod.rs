@@ -12,6 +12,7 @@
 
 pub mod config;
 pub mod deserializer;
+pub mod encoder;
 pub mod json_encoder;
 pub mod serializer;
 

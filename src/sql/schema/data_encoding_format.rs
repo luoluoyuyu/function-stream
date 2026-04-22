@@ -28,6 +28,9 @@ pub enum DataEncodingFormat {
     Avro,
     Parquet,
     Raw,
+    Csv,
+    JsonL,
+    Orc,
 }
 
 impl DataEncodingFormat {
@@ -35,19 +38,27 @@ impl DataEncodingFormat {
         let format_str = opts
             .get(opt::FORMAT)
             .map(|s| s.as_str())
-            .unwrap_or(opt::DEFAULT_FORMAT_VALUE);
+            .unwrap_or(opt::DEFAULT_FORMAT_VALUE)
+            .to_lowercase();
         let is_debezium = opts
             .get(opt::FORMAT_DEBEZIUM_FLAG)
             .or_else(|| opts.get(opt::JSON_DEBEZIUM))
             .map(|s| s == with_opt_bool_str::TRUE)
             .unwrap_or(false);
 
-        match (format_str, is_debezium) {
+        match (format_str.as_str(), is_debezium) {
             (f, true) if f == connection_format_value::JSON => Ok(Self::DebeziumJson),
             (f, _) if f == connection_format_value::DEBEZIUM_JSON => Ok(Self::DebeziumJson),
             (f, false) if f == connection_format_value::JSON => Ok(Self::StandardJson),
             (f, _) if f == connection_format_value::AVRO => Ok(Self::Avro),
             (f, _) if f == connection_format_value::PARQUET => Ok(Self::Parquet),
+            (f, _) if f == connection_format_value::CSV => Ok(Self::Csv),
+            (f, _)
+                if f == connection_format_value::JSONL || f == connection_format_value::NDJSON =>
+            {
+                Ok(Self::JsonL)
+            }
+            (f, _) if f == connection_format_value::ORC => Ok(Self::Orc),
             _ => Ok(Self::Raw),
         }
     }
@@ -58,7 +69,8 @@ impl DataEncodingFormat {
             Format::Json(_) => Self::StandardJson,
             Format::Avro(_) => Self::Avro,
             Format::Parquet(_) => Self::Parquet,
-            Format::Protobuf(_) | Format::RawString(_) | Format::RawBytes(_) => Self::Raw,
+            Format::Csv(_) => Self::Csv,
+            _ => Self::Raw,
         }
     }
 

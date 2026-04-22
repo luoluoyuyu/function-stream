@@ -10,19 +10,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import concurrent.futures
 import logging
+import os
 import re
 import sys
 from pathlib import Path
-from typing import Generator, List
+from typing import Any, Generator, Set
 
 _CURRENT_DIR = Path(__file__).resolve().parent
-_INTEGRATION_ROOT = Path(__file__).resolve().parents[3]
+_INTEGRATION_ROOT = _CURRENT_DIR.parents[2]
 
-if str(_INTEGRATION_ROOT) not in sys.path:
-    sys.path.insert(0, str(_INTEGRATION_ROOT))
-if str(_CURRENT_DIR) not in sys.path:
-    sys.path.insert(0, str(_CURRENT_DIR))
+
+def _inject_path_safely(target_path: Path) -> None:
+    path_str = str(target_path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
+        os.environ["PYTHONPATH"] = f"{path_str}{os.pathsep}{os.environ.get('PYTHONPATH', '')}"
+
+
+_inject_path_safely(_INTEGRATION_ROOT)
+_inject_path_safely(_CURRENT_DIR)
 
 import pytest
 from framework import FunctionStreamInstance, KafkaDockerManager
@@ -33,25 +41,24 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture(scope="session")
 def kafka() -> Generator[KafkaDockerManager, None, None]:
-    """
-    Session-scoped Kafka broker manager.
-    Leverages Context Manager for guaranteed teardown.
-    """
     with KafkaDockerManager() as mgr:
         yield mgr
-        try:
-            mgr.clear_all_topics()
-        except Exception as e:
-            logger.warning("Failed to clear topics during Kafka teardown: %s", e)
 
 
 @pytest.fixture(scope="session")
 def kafka_topics(kafka: KafkaDockerManager) -> str:
-    """
-    Pre-creates standard topics and returns the bootstrap server address.
-    """
     kafka.create_topics_if_not_exist(["in", "out", "events", "counts"])
     return kafka.config.bootstrap_servers
+
+
+@pytest.fixture(scope="session")
+def minio() -> Generator[Any, None, None]:
+    try:
+        from framework import MinioDockerManager
+    except ModuleNotFoundError as exc:
+        pytest.skip(f"MinIO tests require optional dependency: {exc}")
+    with MinioDockerManager() as mgr:
+        yield mgr
 
 
 def _sanitize_segment(segment: str) -> str:
@@ -60,14 +67,6 @@ def _sanitize_segment(segment: str) -> str:
 
 
 def _nodeid_to_workspace_path(nodeid: str) -> str:
-    """
-    Convert pytest nodeid into a readable nested path under target/.
-
-    Example:
-        test/wasm/python_sdk/test_data_flow.py::TestDataFlow::test_single_word_counting
-    ->
-        test/wasm/python_sdk/test_data_flow/TestDataFlow/test_single_word_counting
-    """
     parts = nodeid.split("::")
     file_part = Path(parts[0]).with_suffix("")
     file_segments = [_sanitize_segment(seg) for seg in file_part.parts]
@@ -77,10 +76,6 @@ def _nodeid_to_workspace_path(nodeid: str) -> str:
 
 @pytest.fixture
 def fs_server(request: pytest.FixtureRequest) -> Generator[FunctionStreamInstance, None, None]:
-    """
-    Function-scoped FunctionStream instance.
-    Uses Context Manager to ensure SIGKILL and workspace cleanup.
-    """
     test_name = _nodeid_to_workspace_path(request.node.nodeid)
     with FunctionStreamInstance(test_name=test_name) as instance:
         yield instance
@@ -88,30 +83,44 @@ def fs_server(request: pytest.FixtureRequest) -> Generator[FunctionStreamInstanc
 
 @pytest.fixture
 def fs_client(fs_server: FunctionStreamInstance) -> Generator[FsClient, None, None]:
-    """
-    Function-scoped FsClient connected to the isolated fs_server.
-    """
     with fs_server.get_client() as client:
         yield client
 
 
+class FunctionTracker:
+    def __init__(self, client: FsClient):
+        self._client = client
+        self._registered: Set[str] = set()
+
+    def append(self, name: str) -> None:
+        self._registered.add(name)
+
+    def register(self, name: str) -> None:
+        self._registered.add(name)
+
+    def _teardown_single_function(self, name: str) -> None:
+        try:
+            self._client.stop_function(name)
+        except Exception as e:
+            logger.debug("Ignored stop error for '%s': %s", name, e)
+
+        try:
+            self._client.drop_function(name)
+        except Exception as e:
+            logger.debug("Ignored drop error for '%s': %s", name, e)
+
+    def teardown_all(self) -> None:
+        if not self._registered:
+            return
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            list(executor.map(self._teardown_single_function, self._registered))
+
+        self._registered.clear()
+
+
 @pytest.fixture
-def function_registry(fs_client: FsClient) -> Generator[List[str], None, None]:
-    """
-    RAII-style registry for FunctionStream tasks.
-    Ensures absolute teardown of functions to prevent state leakage.
-    """
-    registered_names: List[str] = []
-
-    yield registered_names
-
-    for name in registered_names:
-        try:
-            fs_client.stop_function(name)
-        except Exception as e:
-            logger.debug("Failed to stop function '%s' during cleanup: %s", name, e)
-
-        try:
-            fs_client.drop_function(name)
-        except Exception as e:
-            logger.error("Failed to drop function '%s' during cleanup: %s", name, e)
+def function_registry(fs_client: FsClient) -> Generator[FunctionTracker, None, None]:
+    tracker = FunctionTracker(fs_client)
+    yield tracker
+    tracker.teardown_all()

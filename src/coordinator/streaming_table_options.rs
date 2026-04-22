@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use crate::sql::common::with_option_keys as opt;
+
 fn parse_positive_u64(raw: &str) -> Option<u64> {
     let t = raw.trim().trim_matches('\'');
     t.parse::<u64>().ok().filter(|&v| v > 0)
@@ -23,12 +25,12 @@ fn parse_positive_u32(raw: &str) -> Option<u32> {
 }
 
 pub fn parse_checkpoint_interval_ms(opts: Option<&HashMap<String, String>>) -> Option<u64> {
-    opts.and_then(|m| m.get("checkpoint.interval"))
+    opts.and_then(|m| m.get(opt::CHECKPOINT_INTERVAL_MS))
         .and_then(|s| parse_positive_u64(s))
 }
 
 pub fn parse_pipeline_parallelism(opts: Option<&HashMap<String, String>>) -> Option<u32> {
-    opts.and_then(|m| m.get("parallelism"))
+    opts.and_then(|m| m.get(opt::PIPELINE_PARALLELISM))
         .and_then(|s| parse_positive_u32(s))
 }
 
@@ -39,8 +41,8 @@ mod tests {
     #[test]
     fn parses_checkpoint_and_parallelism() {
         let mut m = HashMap::new();
-        m.insert("checkpoint.interval".to_string(), "30000".to_string());
-        m.insert("parallelism".to_string(), "2".to_string());
+        m.insert(opt::CHECKPOINT_INTERVAL_MS.to_string(), "30000".to_string());
+        m.insert(opt::PIPELINE_PARALLELISM.to_string(), "2".to_string());
         assert_eq!(parse_checkpoint_interval_ms(Some(&m)), Some(30_000));
         assert_eq!(parse_pipeline_parallelism(Some(&m)), Some(2));
     }

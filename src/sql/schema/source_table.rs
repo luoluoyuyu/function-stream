@@ -31,6 +31,7 @@ use super::connector_config::ConnectorConfig;
 use super::data_encoding_format::DataEncodingFormat;
 use super::schema_context::SchemaContext;
 use super::table_execution_unit::{EngineDescriptor, SyncMode, TableExecutionUnit};
+use super::table_builder_factory::{TableBuildBase, TableBuilderFactory};
 use super::table_role::{
     TableRole, apply_adapter_specific_rules, deduce_role, serialize_backend_params,
     validate_adapter_availability,
@@ -45,7 +46,7 @@ use crate::sql::common::constants::{connection_table_role, connector_type, sql_f
 use crate::sql::common::with_option_keys as opt;
 use crate::sql::common::{BadData, Format, Framing, FsSchema, JsonCompression, JsonFormat};
 use crate::sql::schema::ConnectionType;
-use crate::sql::schema::kafka_operator_config::build_kafka_proto_config;
+use crate::sql::schema::sink_config_codec::build_sink_connector_config;
 use crate::sql::schema::table::SqlSource;
 use crate::sql::types::ProcessingMode;
 
@@ -102,7 +103,7 @@ impl SourceTable {
             table_identifier: table_identifier.into(),
             role: connection_type.into(),
             schema_specs: Vec::new(),
-            connector_config: ConnectorConfig::Generic(HashMap::new()),
+            connector_config: ConnectorConfig::KafkaSource(Default::default()),
             temporal_config: TemporalPipelineConfig::default(),
             key_constraints: Vec::new(),
             payload_format: None,
@@ -189,9 +190,11 @@ impl SourceTable {
             table_identifier: id.to_string(),
             role,
             schema_specs: refined_columns,
-            connector_config: ConnectorConfig::Generic(
+            connector_config: build_sink_connector_config(
+                adapter,
+                role,
                 catalog_with_options.clone().into_iter().collect(),
-            ),
+            )?,
             temporal_config: temporal_settings,
             key_constraints: pk_list,
             payload_format: Some(encoding),
@@ -319,51 +322,36 @@ impl SourceTable {
         let bad_data = BadData::from_opts(options)
             .map_err(|e| DataFusionError::Plan(format!("Invalid bad_data: '{e}'")))?;
 
-        let role = if let Some(t) = connection_type_override {
-            t.into()
-        } else {
-            match options.pull_opt_str(opt::TYPE)?.as_deref() {
-                None | Some(connection_table_role::SOURCE) => TableRole::Ingestion,
-                Some(connection_table_role::SINK) => TableRole::Egress,
-                Some(connection_table_role::LOOKUP) => TableRole::Reference,
-                Some(other) => {
-                    return plan_err!("invalid connection type '{other}' in WITH options");
-                }
+        let role = match (connection_type_override, options.pull_opt_str(opt::TYPE)?.as_deref()) {
+            (Some(t), _) => t.into(),
+            (None, None | Some(connection_table_role::SOURCE)) => TableRole::Ingestion,
+            (None, Some(connection_table_role::SINK)) => TableRole::Egress,
+            (None, Some(connection_table_role::LOOKUP)) => TableRole::Reference,
+            (None, Some(other)) => {
+                return plan_err!("invalid connection type '{other}' in WITH options");
             }
         };
 
-        let mut table = SourceTable {
-            registry_id: None,
-            adapter_type: connector_name.to_string(),
-            table_identifier: table_identifier.to_string(),
-            role,
-            schema_specs: columns,
-            connector_config: ConnectorConfig::Generic(HashMap::new()),
-            temporal_config: TemporalPipelineConfig::default(),
-            key_constraints: Vec::new(),
-            payload_format,
-            connection_format: format.clone(),
-            description,
-            partition_exprs: Arc::new(None),
-            lookup_cache_max_bytes: None,
-            lookup_cache_ttl: None,
-            inferred_fields: None,
-            catalog_with_options,
-        };
+        let mut temporal_config = TemporalPipelineConfig::default();
+        let mut lookup_cache_max_bytes = None;
+        let mut lookup_cache_ttl = None;
 
-        if let Some(event_time_field) = options.pull_opt_field(opt::EVENT_TIME_FIELD)? {
-            warn!("`event_time_field` WITH option is deprecated; use WATERMARK FOR syntax");
-            table.temporal_config.event_column = Some(event_time_field);
+        if role != TableRole::Egress {
+            if let Some(event_time_field) = options.pull_opt_field(opt::EVENT_TIME_FIELD)? {
+                warn!("`event_time_field` WITH option is deprecated; use WATERMARK FOR syntax");
+                temporal_config.event_column = Some(event_time_field);
+            }
+
+            if let Some(watermark_field) = options.pull_opt_field(opt::WATERMARK_FIELD)? {
+                warn!("`watermark_field` WITH option is deprecated; use WATERMARK FOR syntax");
+                temporal_config.watermark_strategy_column = Some(watermark_field);
+            }
         }
 
-        if let Some(watermark_field) = options.pull_opt_field(opt::WATERMARK_FIELD)? {
-            warn!("`watermark_field` WITH option is deprecated; use WATERMARK FOR syntax");
-            table.temporal_config.watermark_strategy_column = Some(watermark_field);
-        }
-
-        if let Some((time_field, watermark_expr)) = watermark {
-            let field = table
-                .schema_specs
+        if role != TableRole::Egress
+            && let Some((time_field, watermark_expr)) = watermark
+        {
+            let field = columns
                 .iter()
                 .find(|c| c.arrow_field().name().as_str() == time_field.as_str())
                 .ok_or_else(|| {
@@ -383,18 +371,24 @@ impl SourceTable {
                 );
             }
 
-            for col in table.schema_specs.iter_mut() {
+            for col in columns.iter_mut() {
                 if col.arrow_field().name().as_str() == time_field.as_str() {
                     col.set_nullable(false);
                     break;
                 }
             }
 
-            let table_ref = TableReference::bare(table.table_identifier.as_str());
-            let df_schema =
-                DFSchema::try_from_qualified_schema(table_ref, &table.produce_physical_schema())?;
+            let table_ref = TableReference::bare(table_identifier);
+            let physical_schema = Schema::new(
+                columns
+                    .iter()
+                    .filter(|c| !c.is_computed())
+                    .map(|c| c.arrow_field().clone())
+                    .collect::<Vec<_>>(),
+            );
+            let df_schema = DFSchema::try_from_qualified_schema(table_ref, &physical_schema)?;
 
-            table.temporal_config.event_column = Some(time_field.clone());
+            temporal_config.event_column = Some(time_field.clone());
 
             if let Some(expr) = watermark_expr {
                 let logical_expr = plan_generating_expr(&expr, &df_schema, schema_provider)
@@ -409,7 +403,7 @@ impl SourceTable {
                     );
                 }
 
-                table.schema_specs.push(ColumnDescriptor::new_computed(
+                columns.push(ColumnDescriptor::new_computed(
                     Field::new(
                         sql_field::COMPUTED_WATERMARK,
                         logical_expr.get_type(&df_schema)?,
@@ -417,40 +411,23 @@ impl SourceTable {
                     ),
                     logical_expr,
                 ));
-                table.temporal_config.watermark_strategy_column =
+                temporal_config.watermark_strategy_column =
                     Some(sql_field::COMPUTED_WATERMARK.to_string());
             } else {
-                table.temporal_config.watermark_strategy_column = Some(time_field);
+                temporal_config.watermark_strategy_column = Some(time_field);
             }
         }
 
-        let idle_from_micros = options
-            .pull_opt_i64(opt::IDLE_MICROS)?
-            .filter(|t| *t > 0)
-            .map(|t| Duration::from_micros(t as u64));
-        let idle_from_duration = options.pull_opt_duration(opt::IDLE_TIME)?;
-        table.temporal_config.liveness_timeout = idle_from_micros.or(idle_from_duration);
+        if role != TableRole::Egress {
+            let idle_from_micros = options
+                .pull_opt_i64(opt::IDLE_MICROS)?
+                .filter(|t| *t > 0)
+                .map(|t| Duration::from_micros(t as u64));
+            let idle_from_duration = options.pull_opt_duration(opt::IDLE_TIME)?;
+            temporal_config.liveness_timeout = idle_from_micros.or(idle_from_duration);
 
-        table.lookup_cache_max_bytes = options.pull_opt_u64(opt::LOOKUP_CACHE_MAX_BYTES)?;
-
-        table.lookup_cache_ttl = options.pull_opt_duration(opt::LOOKUP_CACHE_TTL)?;
-
-        if connector_name.eq_ignore_ascii_case(connector_type::KAFKA) {
-            let proto_cfg = build_kafka_proto_config(options, role, &format, bad_data)?;
-            table.connector_config = match proto_cfg {
-                protocol::function_stream_graph::connector_op::Config::KafkaSource(cfg) => {
-                    ConnectorConfig::KafkaSource(cfg)
-                }
-                protocol::function_stream_graph::connector_op::Config::KafkaSink(cfg) => {
-                    ConnectorConfig::KafkaSink(cfg)
-                }
-                protocol::function_stream_graph::connector_op::Config::Generic(g) => {
-                    ConnectorConfig::Generic(g.properties)
-                }
-            };
-        } else {
-            let extra_opts = options.drain_remaining_string_values()?;
-            table.connector_config = ConnectorConfig::Generic(extra_opts);
+            lookup_cache_max_bytes = options.pull_opt_u64(opt::LOOKUP_CACHE_MAX_BYTES)?;
+            lookup_cache_ttl = options.pull_opt_duration(opt::LOOKUP_CACHE_TTL)?;
         }
 
         if role == TableRole::Ingestion
@@ -460,9 +437,28 @@ impl SourceTable {
             return plan_err!("Debezium source must have at least one PRIMARY KEY field");
         }
 
-        table.key_constraints = primary_keys;
+        let base = TableBuildBase {
+            role,
+            schema_specs: columns,
+            key_constraints: primary_keys,
+            payload_format,
+            connection_format: format.clone(),
+            description,
+            catalog_with_options,
+            temporal_config,
+            lookup_cache_max_bytes,
+            lookup_cache_ttl,
+        };
 
-        Ok(table)
+        let built = TableBuilderFactory::create_builder_with_role(
+            table_identifier,
+            connector_name,
+            options,
+            base,
+            bad_data,
+        )?
+        .build()?;
+        Ok(built)
     }
 
     pub fn has_virtual_fields(&self) -> bool {

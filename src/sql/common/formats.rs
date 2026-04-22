@@ -117,6 +117,14 @@ pub struct RawBytesFormat {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd)]
 #[serde(rename_all = "snake_case")]
+pub struct CsvFormat {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub struct LanceFormat {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd)]
+#[serde(rename_all = "snake_case")]
 pub struct AvroFormat {
     #[serde(default)]
     pub confluent_schema_registry: bool,
@@ -199,6 +207,8 @@ pub struct ProtobufFormat {
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum Format {
     Json(JsonFormat),
+    Csv(CsvFormat),
+    Lance(LanceFormat),
     Avro(AvroFormat),
     Protobuf(ProtobufFormat),
     Parquet(ParquetFormat),
@@ -216,6 +226,8 @@ impl Format {
     pub fn name(&self) -> &'static str {
         match self {
             Format::Json(_) => connection_format_value::JSON,
+            Format::Csv(_) => connection_format_value::CSV,
+            Format::Lance(_) => connection_format_value::LANCE,
             Format::Avro(_) => connection_format_value::AVRO,
             Format::Protobuf(_) => connection_format_value::PROTOBUF,
             Format::Parquet(_) => connection_format_value::PARQUET,

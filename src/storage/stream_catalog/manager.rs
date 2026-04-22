@@ -516,39 +516,18 @@ impl CatalogManager {
         source.catalog_with_options = source_row.with_options.into_iter().collect();
         source.description = source_row.description;
 
-        // Rebuild strongly-typed ConnectorConfig from persisted WITH options.
-        if source.connector().eq_ignore_ascii_case("kafka") {
-            use crate::sql::schema::ConnectorConfig;
-            use crate::sql::schema::kafka_operator_config::build_kafka_proto_config_from_string_map;
-            let opts_map: std::collections::HashMap<String, String> = source
-                .catalog_with_options
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let physical = source.produce_physical_schema();
-            if let Ok(proto_cfg) = build_kafka_proto_config_from_string_map(opts_map, &physical) {
-                source.connector_config = match proto_cfg {
-                    protocol::function_stream_graph::connector_op::Config::KafkaSource(cfg) => {
-                        ConnectorConfig::KafkaSource(cfg)
-                    }
-                    protocol::function_stream_graph::connector_op::Config::KafkaSink(cfg) => {
-                        ConnectorConfig::KafkaSink(cfg)
-                    }
-                    protocol::function_stream_graph::connector_op::Config::Generic(g) => {
-                        ConnectorConfig::Generic(g.properties)
-                    }
-                };
-            }
-        } else {
-            use crate::sql::schema::ConnectorConfig;
-            source.connector_config = ConnectorConfig::Generic(
-                source
-                    .catalog_with_options
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-            );
-        }
+        let opts: std::collections::HashMap<String, String> = source
+            .catalog_with_options
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        source.connector_config =
+            crate::sql::schema::connector_config_factory::build_connector_config_from_catalog(
+                source.connector(),
+                source.role,
+                opts,
+                &source.produce_physical_schema(),
+            )?;
 
         if as_lookup {
             Ok(CatalogTable::LookupTable(source))

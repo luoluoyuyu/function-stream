@@ -24,9 +24,6 @@ use crate::sql::common::formats::{
 use crate::sql::common::with_option_keys as opt;
 use crate::sql::schema::table_role::TableRole;
 
-const STREAMING_JOB_OPTION_CHECKPOINT_INTERVAL: &str = "checkpoint.interval";
-const STREAMING_JOB_OPTION_PARALLELISM: &str = "parallelism";
-
 fn sql_format_to_proto(fmt: &SqlFormat) -> DFResult<FormatConfig> {
     match fmt {
         SqlFormat::Json(j) => Ok(FormatConfig {
@@ -199,8 +196,9 @@ pub fn build_kafka_proto_config(
 
             let mut client_configs = options.drain_remaining_string_values()?;
             // Streaming job-level options are parsed by planner/coordinator, not Kafka client.
-            client_configs.remove(STREAMING_JOB_OPTION_CHECKPOINT_INTERVAL);
-            client_configs.remove(STREAMING_JOB_OPTION_PARALLELISM);
+            client_configs.remove(opt::CHECKPOINT_INTERVAL_MS);
+            client_configs.remove(opt::PIPELINE_PARALLELISM);
+            client_configs.remove(opt::KEY_BY_PARALLELISM);
 
             Ok(ProtoConfig::KafkaSource(KafkaSourceConfig {
                 topic,
@@ -250,8 +248,9 @@ pub fn build_kafka_proto_config(
 
             let mut client_configs = options.drain_remaining_string_values()?;
             // Streaming job-level options are parsed by planner/coordinator, not Kafka client.
-            client_configs.remove(STREAMING_JOB_OPTION_CHECKPOINT_INTERVAL);
-            client_configs.remove(STREAMING_JOB_OPTION_PARALLELISM);
+            client_configs.remove(opt::CHECKPOINT_INTERVAL_MS);
+            client_configs.remove(opt::PIPELINE_PARALLELISM);
+            client_configs.remove(opt::KEY_BY_PARALLELISM);
 
             Ok(ProtoConfig::KafkaSink(KafkaSinkConfig {
                 topic,
