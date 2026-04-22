@@ -61,7 +61,7 @@ impl JsonFormat {
 
 impl Format {
     pub fn from_opts(opts: &mut ConnectorOptions) -> DFResult<Option<Self>> {
-        let Some(name) = opts.pull_opt_str(opt::FORMAT)? else {
+        let Some(name) = opts.peek_opt_str(opt::FORMAT)? else {
             return Ok(None);
         };
         let n = name.to_lowercase();

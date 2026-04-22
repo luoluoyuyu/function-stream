@@ -26,7 +26,7 @@ use tracing::debug;
 
 use crate::coordinator::analyze::analysis::Analysis;
 use crate::coordinator::plan::{
-    CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan, DropFunctionPlan,
+    CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan, DropFunctionPlan,
     DropStreamingTablePlan, DropTablePlan, PlanNode, ShowCatalogTablesPlan,
     ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan, ShowStreamingTablesPlan,
     StartFunctionPlan, StopFunctionPlan, StreamingTable,
@@ -452,10 +452,12 @@ impl StatementVisitor for LogicalPlanVisitor {
         stmt: &StreamingTableStatement,
         _ctx: &StatementVisitorContext,
     ) -> StatementVisitorResult {
-        let execution_plan = self.compile_streaming_sink(stmt).unwrap_or_else(|err| {
-            panic!("Fatal Compiler Error: Streaming sink compilation aborted - {err}");
-        });
-        StatementVisitorResult::Plan(Box::new(execution_plan))
+        match self.compile_streaming_sink(stmt) {
+            Ok(execution_plan) => StatementVisitorResult::Plan(Box::new(execution_plan)),
+            Err(err) => StatementVisitorResult::Plan(Box::new(CompileErrorPlan::new(format!(
+                "Streaming sink compilation aborted - {err}"
+            )))),
+        }
     }
 
     fn visit_drop_table_statement(

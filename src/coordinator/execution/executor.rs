@@ -21,7 +21,8 @@ use crate::coordinator::dataset::{
     ShowFunctionsResult, ShowStreamingTablesResult, empty_record_batch,
 };
 use crate::coordinator::plan::{
-    CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan, CreateTablePlanBody,
+    CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan,
+    CreateTablePlanBody,
     DropFunctionPlan, DropStreamingTablePlan, DropTablePlan, LookupTablePlan, PlanNode,
     PlanVisitor, PlanVisitorContext, PlanVisitorResult, ShowCatalogTablesPlan,
     ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan, ShowStreamingTablesPlan,
@@ -89,6 +90,14 @@ impl Executor {
 }
 
 impl PlanVisitor for Executor {
+    fn visit_compile_error_plan(
+        &self,
+        plan: &CompileErrorPlan,
+        _context: &PlanVisitorContext,
+    ) -> PlanVisitorResult {
+        PlanVisitorResult::Execute(Err(ExecuteError::Validation(plan.message.clone())))
+    }
+
     fn visit_create_function(
         &self,
         plan: &CreateFunctionPlan,

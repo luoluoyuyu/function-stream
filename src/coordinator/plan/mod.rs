@@ -12,6 +12,7 @@
 
 mod create_function_plan;
 mod create_python_function_plan;
+mod compile_error_plan;
 mod create_table_plan;
 mod drop_function_plan;
 mod drop_streaming_table_plan;
@@ -32,6 +33,7 @@ mod visitor;
 
 pub use create_function_plan::CreateFunctionPlan;
 pub use create_python_function_plan::CreatePythonFunctionPlan;
+pub use compile_error_plan::CompileErrorPlan;
 pub use create_table_plan::{CreateTablePlan, CreateTablePlanBody};
 pub use drop_function_plan::DropFunctionPlan;
 pub use drop_streaming_table_plan::DropStreamingTablePlan;
