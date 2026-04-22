@@ -28,6 +28,7 @@ use tracing::warn;
 use super::StreamSchemaProvider;
 use super::column_descriptor::ColumnDescriptor;
 use super::connector_config::ConnectorConfig;
+use super::connector_config_factory::build_connector_config_from_options;
 use super::data_encoding_format::DataEncodingFormat;
 use super::schema_context::SchemaContext;
 use super::table_execution_unit::{EngineDescriptor, SyncMode, TableExecutionUnit};
@@ -45,7 +46,7 @@ use crate::sql::common::constants::{connection_table_role, connector_type, sql_f
 use crate::sql::common::with_option_keys as opt;
 use crate::sql::common::{BadData, Format, Framing, FsSchema, JsonCompression, JsonFormat};
 use crate::sql::schema::ConnectionType;
-use crate::sql::schema::kafka_operator_config::build_kafka_proto_config;
+use crate::sql::schema::sink_config_codec::build_sink_connector_config;
 use crate::sql::schema::table::SqlSource;
 use crate::sql::types::ProcessingMode;
 
@@ -102,7 +103,7 @@ impl SourceTable {
             table_identifier: table_identifier.into(),
             role: connection_type.into(),
             schema_specs: Vec::new(),
-            connector_config: ConnectorConfig::Generic(HashMap::new()),
+            connector_config: ConnectorConfig::KafkaSource(Default::default()),
             temporal_config: TemporalPipelineConfig::default(),
             key_constraints: Vec::new(),
             payload_format: None,
@@ -189,9 +190,11 @@ impl SourceTable {
             table_identifier: id.to_string(),
             role,
             schema_specs: refined_columns,
-            connector_config: ConnectorConfig::Generic(
+            connector_config: build_sink_connector_config(
+                adapter,
+                role,
                 catalog_with_options.clone().into_iter().collect(),
-            ),
+            )?,
             temporal_config: temporal_settings,
             key_constraints: pk_list,
             payload_format: Some(encoding),
@@ -338,7 +341,7 @@ impl SourceTable {
             table_identifier: table_identifier.to_string(),
             role,
             schema_specs: columns,
-            connector_config: ConnectorConfig::Generic(HashMap::new()),
+            connector_config: ConnectorConfig::KafkaSource(Default::default()),
             temporal_config: TemporalPipelineConfig::default(),
             key_constraints: Vec::new(),
             payload_format,
@@ -435,23 +438,8 @@ impl SourceTable {
 
         table.lookup_cache_ttl = options.pull_opt_duration(opt::LOOKUP_CACHE_TTL)?;
 
-        if connector_name.eq_ignore_ascii_case(connector_type::KAFKA) {
-            let proto_cfg = build_kafka_proto_config(options, role, &format, bad_data)?;
-            table.connector_config = match proto_cfg {
-                protocol::function_stream_graph::connector_op::Config::KafkaSource(cfg) => {
-                    ConnectorConfig::KafkaSource(cfg)
-                }
-                protocol::function_stream_graph::connector_op::Config::KafkaSink(cfg) => {
-                    ConnectorConfig::KafkaSink(cfg)
-                }
-                protocol::function_stream_graph::connector_op::Config::Generic(g) => {
-                    ConnectorConfig::Generic(g.properties)
-                }
-            };
-        } else {
-            let extra_opts = options.drain_remaining_string_values()?;
-            table.connector_config = ConnectorConfig::Generic(extra_opts);
-        }
+        table.connector_config =
+            build_connector_config_from_options(connector_name, role, options, &format, bad_data)?;
 
         if role == TableRole::Ingestion
             && encoding.supports_delta_updates()

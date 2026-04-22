@@ -14,10 +14,13 @@ pub mod catalog_ddl;
 pub mod column_descriptor;
 pub mod connection_type;
 pub mod connector_config;
+pub mod connector_config_factory;
 pub mod data_encoding_format;
 pub mod kafka_operator_config;
 pub mod schema_context;
 pub mod schema_provider;
+pub mod sink_config_codec;
+pub mod sink_runtime_config;
 pub mod source_table;
 pub mod table;
 pub mod table_execution_unit;
@@ -30,7 +33,6 @@ pub use catalog_ddl::{
 };
 pub use column_descriptor::ColumnDescriptor;
 pub use connection_type::ConnectionType;
-pub use connector_config::ConnectorConfig;
 pub use source_table::SourceTable;
 
 /// Back-compat alias for [`SourceTable`].

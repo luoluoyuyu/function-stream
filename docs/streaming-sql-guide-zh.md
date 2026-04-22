@@ -90,6 +90,8 @@ flowchart LR
 | **水位线 (Watermark)** | `AS <column> - INTERVAL ...` | 对**迟到、乱序**数据的容忍度；时间推进由水位线驱动，**过度迟到**的事件会被安全丢弃。 |
 
 > **完整参考**：支持的连接器、数据格式和 SQL 数据类型，请参阅 [连接器、格式与类型参考](connectors-and-formats-zh.md)。
+>
+> **Source / Sink 专项说明**：请参阅 [Streaming SQL Connector 文档](streaming-sql/README-zh.md)（含 Kafka Source 与 filesystem/s3/delta/iceberg/lanceDB Sink）。
 
 ---
 

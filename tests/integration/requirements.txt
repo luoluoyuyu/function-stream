@@ -19,6 +19,11 @@ protobuf>=4.25.0
 # Docker + Kafka management for integration tests
 docker>=7.0
 confluent-kafka>=2.3.0
+boto3>=1.34.0
+requests>=2.31.0
+pyarrow>=17.0.0
+lance>=1.1.0
+python-dateutil>=2.9.0
 
 # FunctionStream Python packages (local editable installs)
 -e ../../python/functionstream-api

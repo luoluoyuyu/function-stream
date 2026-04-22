@@ -10,17 +10,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use protocol::function_stream_graph::{
-    GenericConnectorConfig, KafkaSinkConfig, KafkaSourceConfig, connector_op,
+    DeltaSinkConfig, FilesystemSinkConfig, IcebergSinkConfig, KafkaSinkConfig, KafkaSourceConfig,
+    LanceDbSinkConfig, S3SinkConfig, connector_op,
 };
 
 #[derive(Debug, Clone)]
 pub enum ConnectorConfig {
     KafkaSource(KafkaSourceConfig),
     KafkaSink(KafkaSinkConfig),
-    Generic(HashMap<String, String>),
+    FilesystemSink(FilesystemSinkConfig),
+    DeltaSink(DeltaSinkConfig),
+    IcebergSink(IcebergSinkConfig),
+    S3Sink(S3SinkConfig),
+    LanceDbSink(LanceDbSinkConfig),
 }
 
 impl ConnectorConfig {
@@ -28,11 +31,13 @@ impl ConnectorConfig {
         match self {
             ConnectorConfig::KafkaSource(cfg) => connector_op::Config::KafkaSource(cfg.clone()),
             ConnectorConfig::KafkaSink(cfg) => connector_op::Config::KafkaSink(cfg.clone()),
-            ConnectorConfig::Generic(props) => {
-                connector_op::Config::Generic(GenericConnectorConfig {
-                    properties: props.clone(),
-                })
+            ConnectorConfig::FilesystemSink(cfg) => {
+                connector_op::Config::FilesystemSink(cfg.clone())
             }
+            ConnectorConfig::DeltaSink(cfg) => connector_op::Config::DeltaSink(cfg.clone()),
+            ConnectorConfig::IcebergSink(cfg) => connector_op::Config::IcebergSink(cfg.clone()),
+            ConnectorConfig::S3Sink(cfg) => connector_op::Config::S3Sink(cfg.clone()),
+            ConnectorConfig::LanceDbSink(cfg) => connector_op::Config::LancedbSink(cfg.clone()),
         }
     }
 }
@@ -47,7 +52,21 @@ impl PartialEq for ConnectorConfig {
             (ConnectorConfig::KafkaSink(a), ConnectorConfig::KafkaSink(b)) => {
                 a.encode_to_vec() == b.encode_to_vec()
             }
-            (ConnectorConfig::Generic(a), ConnectorConfig::Generic(b)) => a == b,
+            (ConnectorConfig::FilesystemSink(a), ConnectorConfig::FilesystemSink(b)) => {
+                a.encode_to_vec() == b.encode_to_vec()
+            }
+            (ConnectorConfig::DeltaSink(a), ConnectorConfig::DeltaSink(b)) => {
+                a.encode_to_vec() == b.encode_to_vec()
+            }
+            (ConnectorConfig::IcebergSink(a), ConnectorConfig::IcebergSink(b)) => {
+                a.encode_to_vec() == b.encode_to_vec()
+            }
+            (ConnectorConfig::S3Sink(a), ConnectorConfig::S3Sink(b)) => {
+                a.encode_to_vec() == b.encode_to_vec()
+            }
+            (ConnectorConfig::LanceDbSink(a), ConnectorConfig::LanceDbSink(b)) => {
+                a.encode_to_vec() == b.encode_to_vec()
+            }
             _ => false,
         }
     }
@@ -62,11 +81,11 @@ impl std::hash::Hash for ConnectorConfig {
         match self {
             ConnectorConfig::KafkaSource(cfg) => cfg.encode_to_vec().hash(state),
             ConnectorConfig::KafkaSink(cfg) => cfg.encode_to_vec().hash(state),
-            ConnectorConfig::Generic(m) => {
-                let mut pairs: Vec<_> = m.iter().collect();
-                pairs.sort_by_key(|(k, _)| (*k).clone());
-                pairs.hash(state);
-            }
+            ConnectorConfig::FilesystemSink(cfg) => cfg.encode_to_vec().hash(state),
+            ConnectorConfig::DeltaSink(cfg) => cfg.encode_to_vec().hash(state),
+            ConnectorConfig::IcebergSink(cfg) => cfg.encode_to_vec().hash(state),
+            ConnectorConfig::S3Sink(cfg) => cfg.encode_to_vec().hash(state),
+            ConnectorConfig::LanceDbSink(cfg) => cfg.encode_to_vec().hash(state),
         }
     }
 }

@@ -9,8 +9,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 APP_NAME    := function-stream
 VERSION     := $(shell grep '^version' Cargo.toml | head -1 | awk -F '"' '{print $$2}')
 DATE        := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -29,30 +27,22 @@ endif
 OS          := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 OS_NAME     := $(shell uname -s)
 
-# 2. Configure RUSTFLAGS and target triple per platform
+# 2. Configure target triple per platform
 DIST_ROOT   := dist
 ifeq ($(OS_NAME), Linux)
     TRIPLE := $(ARCH)-unknown-linux-gnu
     STATIC_FLAGS :=
 else ifeq ($(OS_NAME), Darwin)
-    # macOS: strip symbols but keep dynamic linking (Apple system restriction)
     TRIPLE := $(ARCH)-apple-darwin
     STATIC_FLAGS :=
 else ifneq (,$(findstring MINGW,$(OS_NAME))$(findstring MSYS,$(OS_NAME)))
-    # Windows (Git Bash / MSYS2): static-link MSVC runtime
     TRIPLE := $(ARCH)-pc-windows-msvc
     STATIC_FLAGS := -C target-feature=+crt-static
 else
-    # Fallback
     TRIPLE := $(ARCH)-unknown-linux-gnu
     STATIC_FLAGS :=
 endif
 
-# 3. Aggressive optimization flags
-# opt-level=z  : size-oriented, minimize binary footprint
-# strip=symbols: remove debug symbol table at link time
-# Note: panic=abort is intentionally omitted to preserve stack unwinding
-#       for better fault tolerance in the streaming runtime
 OPTIMIZE_FLAGS := -C opt-level=z -C strip=symbols $(STATIC_FLAGS)
 
 TARGET_DIR  := target/$(TRIPLE)/release
@@ -110,7 +100,7 @@ help:
 	(printf "$(C_Y)[!] Auto-installing target toolchain for $(OS_NAME): $(TRIPLE)$(C_0)\n" && \
 	 rustup target add $(TRIPLE))
 
-# 5. Build targets (depend on .ensure-target for automatic toolchain setup)
+# 5. Build targets
 build: .check-env .ensure-target .build-wasm
 	$(call log,BUILD,Rust Full [$(OS_NAME) / $(TRIPLE)])
 	@RUSTFLAGS="$(OPTIMIZE_FLAGS)" \
@@ -128,24 +118,24 @@ build: .check-env .ensure-target .build-wasm
 
 build-lite: .check-env .ensure-target
 	$(call log,BUILD,Rust Lite [$(OS_NAME) / $(TRIPLE)])
-	@RUSTFLAGS="$(OPTIMIZE_FLAGS)" \
+	@RUSTFLAGS="$(INDUSTRIAL_RUSTFLAGS)" \
 	cargo build --release \
-		--target $(TRIPLE) \
-		--no-default-features \
-		--features incremental-cache \
-		--quiet
+	   --target $(TRIPLE) \
+	   --no-default-features \
+	   --features incremental-cache \
+	   --quiet
 	$(call log,BUILD,CLI for dist)
-	@RUSTFLAGS="$(OPTIMIZE_FLAGS)" \
+	@RUSTFLAGS="$(INDUSTRIAL_RUSTFLAGS)" \
 	cargo build --release \
-		--target $(TRIPLE) \
-		-p function-stream-cli \
-		--quiet
+	   --target $(TRIPLE) \
+	   -p function-stream-cli \
+	   --quiet
 	$(call success,Target: $(TARGET_DIR)/$(APP_NAME) $(TARGET_DIR)/cli)
 
 .build-wasm:
 	$(call log,WASM,Building Python Runtime using $(PYTHON_EXEC))
 	@cd $(PYTHON_ROOT)/functionstream-runtime && \
-		PYTHONPATH=../functionstream-api:../functionstream-api-advanced ../../$(PYTHON_EXEC) build.py > /dev/null
+	   PYTHONPATH=../functionstream-api:../functionstream-api-advanced ../../$(PYTHON_EXEC) build.py > /dev/null
 	@[ -f "$(WASM_SOURCE)" ] || (printf "$(C_R)[X] WASM Build Failed$(C_0)\n" && exit 1)
 
 dist: build
@@ -223,9 +213,9 @@ docker:
 docker-run:
 	$(call log,DOCKER,Starting Container)
 	@docker run --rm -it \
-		-p 8080:8080 \
-		-v $(CURDIR)/logs:/app/logs \
-		$(IMAGE_NAME)
+	   -p 8080:8080 \
+	   -v $(CURDIR)/logs:/app/logs \
+	   $(IMAGE_NAME)
 
 docker-push:
 	$(call log,DOCKER,Pushing $(IMAGE_NAME))

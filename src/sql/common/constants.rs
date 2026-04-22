@@ -139,6 +139,11 @@ pub mod interval_duration_unit {
 
 pub mod connection_format_value {
     pub const JSON: &str = "json";
+    pub const CSV: &str = "csv";
+    pub const JSONL: &str = "jsonl";
+    pub const NDJSON: &str = "ndjson";
+    pub const LANCE: &str = "lance";
+    pub const ORC: &str = "orc";
     pub const DEBEZIUM_JSON: &str = "debezium_json";
     pub const AVRO: &str = "avro";
     pub const PARQUET: &str = "parquet";
@@ -246,6 +251,8 @@ pub mod connector_type {
     pub const FILESYSTEM: &str = "filesystem";
     pub const DELTA: &str = "delta";
     pub const ICEBERG: &str = "iceberg";
+    pub const LANCE_DB: &str = "lanceDB";
+    pub const S3: &str = "s3";
     pub const PULSAR: &str = "pulsar";
     pub const NATS: &str = "nats";
     pub const REDIS: &str = "redis";
@@ -264,7 +271,14 @@ pub mod connection_table_role {
     pub const LOOKUP: &str = "lookup";
 }
 
-pub const SUPPORTED_CONNECTOR_ADAPTERS: &[&str] = &[connector_type::KAFKA];
+pub const SUPPORTED_CONNECTOR_ADAPTERS: &[&str] = &[
+    connector_type::KAFKA,
+    connector_type::FILESYSTEM,
+    connector_type::S3,
+    connector_type::DELTA,
+    connector_type::ICEBERG,
+    connector_type::LANCE_DB,
+];
 
 pub mod kafka_with_value {
     pub const SCAN_LATEST: &str = "latest";
