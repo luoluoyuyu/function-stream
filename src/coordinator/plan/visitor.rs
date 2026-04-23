@@ -11,10 +11,11 @@
 // limitations under the License.
 
 use super::{
-    CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan, DropFunctionPlan,
-    DropStreamingTablePlan, DropTablePlan, LookupTablePlan, ShowCatalogTablesPlan,
-    ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan, ShowStreamingTablesPlan,
-    StartFunctionPlan, StopFunctionPlan, StreamingTable, StreamingTableConnectorPlan,
+    CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan,
+    DropFunctionPlan, DropStreamingTablePlan, DropTablePlan, LookupTablePlan,
+    ShowCatalogTablesPlan, ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan,
+    ShowStreamingTablesPlan, StartFunctionPlan, StopFunctionPlan, StreamingTable,
+    StreamingTableConnectorPlan,
 };
 
 /// Context passed to PlanVisitor methods

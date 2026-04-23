@@ -29,7 +29,7 @@ use crate::sql::common::{FsSchema, FsSchemaRef};
 use crate::sql::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::sql::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::sql::logical_planner::planner::{NamedNode, Planner};
-use crate::sql::schema::SourceTable;
+use crate::sql::schema::LookupTable;
 use crate::sql::schema::utils::add_timestamp_field_arrow;
 
 pub const DICTIONARY_SOURCE_NODE_NAME: &str = extension_node::REFERENCE_TABLE_SOURCE;
@@ -37,7 +37,7 @@ pub const STREAM_DICTIONARY_JOIN_NODE_NAME: &str = extension_node::STREAM_REFERE
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReferenceTableSourceNode {
-    pub(crate) source_definition: SourceTable,
+    pub(crate) source_definition: LookupTable,
     pub(crate) resolved_schema: DFSchemaRef,
 }
 
@@ -82,7 +82,7 @@ impl UserDefinedLogicalNodeCore for ReferenceTableSourceNode {
 pub struct StreamReferenceJoinNode {
     pub(crate) upstream_stream_plan: LogicalPlan,
     pub(crate) output_schema: DFSchemaRef,
-    pub(crate) external_dictionary: SourceTable,
+    pub(crate) external_dictionary: LookupTable,
     pub(crate) equijoin_conditions: Vec<(Expr, Column)>,
     pub(crate) post_join_filter: Option<Expr>,
     pub(crate) namespace_alias: Option<TableReference>,

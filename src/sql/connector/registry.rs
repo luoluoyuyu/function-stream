@@ -15,11 +15,14 @@ use std::sync::{Arc, LazyLock};
 
 use datafusion::common::{DataFusionError, Result};
 
-use super::connector_provider::{SinkProvider, SourceProvider};
-use super::kafka_connector::KafkaConnector;
-use super::passthrough_sink_connector::PassthroughSinkConnector;
-use super::s3_connector::S3Connector;
-use crate::sql::common::constants::connector_type;
+use super::provider::{SinkProvider, SourceProvider};
+use super::sink::delta::DeltaSinkConnector;
+use super::sink::filesystem::FilesystemSinkConnector;
+use super::sink::iceberg::IcebergSinkConnector;
+use super::sink::kafka::KafkaSinkConnector;
+use super::sink::lancedb::LanceDbSinkConnector;
+use super::sink::s3::S3SinkConnector;
+use super::source::kafka::KafkaSourceConnector;
 
 pub struct ConnectorRegistry {
     sources: HashMap<String, Arc<dyn SourceProvider>>,
@@ -33,31 +36,26 @@ impl ConnectorRegistry {
             sinks: HashMap::new(),
         };
 
-        let kafka = Arc::new(KafkaConnector);
-        registry.register_source(kafka.clone());
-        registry.register_sink(kafka);
+        registry.register_source(Arc::new(KafkaSourceConnector));
 
-        registry.register_sink(Arc::new(S3Connector));
-        registry.register_sink(Arc::new(PassthroughSinkConnector {
-            name: connector_type::FILESYSTEM,
-        }));
-        registry.register_sink(Arc::new(PassthroughSinkConnector {
-            name: connector_type::DELTA,
-        }));
-        registry.register_sink(Arc::new(PassthroughSinkConnector {
-            name: connector_type::ICEBERG,
-        }));
-        registry.register_sink(Arc::new(PassthroughSinkConnector { name: "lancedb" }));
+        registry.register_sink(Arc::new(KafkaSinkConnector));
+        registry.register_sink(Arc::new(S3SinkConnector));
+        registry.register_sink(Arc::new(FilesystemSinkConnector));
+        registry.register_sink(Arc::new(DeltaSinkConnector));
+        registry.register_sink(Arc::new(IcebergSinkConnector));
+        registry.register_sink(Arc::new(LanceDbSinkConnector));
 
         registry
     }
 
     pub fn register_source(&mut self, provider: Arc<dyn SourceProvider>) {
-        self.sources.insert(provider.name().to_ascii_lowercase(), provider);
+        self.sources
+            .insert(provider.name().to_ascii_lowercase(), provider);
     }
 
     pub fn register_sink(&mut self, provider: Arc<dyn SinkProvider>) {
-        self.sinks.insert(provider.name().to_ascii_lowercase(), provider);
+        self.sinks
+            .insert(provider.name().to_ascii_lowercase(), provider);
     }
 
     pub fn get_source(&self, connector_name: &str) -> Result<Arc<dyn SourceProvider>> {

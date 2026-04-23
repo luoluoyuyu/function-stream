@@ -27,8 +27,8 @@ use crate::sql::logical_node::table_source::StreamIngestionNode;
 use crate::sql::logical_node::watermark_node::EventTimeWatermarkNode;
 use crate::sql::schema::ColumnDescriptor;
 use crate::sql::schema::StreamSchemaProvider;
-use crate::sql::schema::source_table::SourceTable;
-use crate::sql::schema::table::Table;
+use crate::sql::schema::catalog::{ExternalTable, SourceTable};
+use crate::sql::schema::table::CatalogEntity;
 use crate::sql::types::TIMESTAMP_FIELD;
 
 /// Rewrites table scans: projections are lifted out of scans into a dedicated projection node
@@ -285,15 +285,21 @@ impl TreeNodeRewriter for SourceRewriter<'_> {
             .ok_or_else(|| DataFusionError::Plan(format!("Table {table_name} not found")))?;
 
         match table {
-            Table::ConnectorTable(table) => self.mutate_connector_table(&table_scan, table),
-            Table::LookupTable(_table) => {
-                // TODO: implement LookupSource extension
-                plan_err!("Lookup tables are not yet supported")
-            }
-            Table::TableFromQuery {
+            CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                ExternalTable::Source(source) => self.mutate_connector_table(&table_scan, source),
+                ExternalTable::Lookup(_) => {
+                    // TODO: implement LookupSource extension
+                    plan_err!("Lookup tables are not yet supported")
+                }
+                ExternalTable::Sink(sink) => plan_err!(
+                    "Cannot SELECT from sink table '{}' (sinks are write-only)",
+                    sink.name()
+                ),
+            },
+            CatalogEntity::ComputedTable {
                 name: _,
                 logical_plan,
-            } => self.mutate_table_from_query(&table_scan, logical_plan),
+            } => self.mutate_table_from_query(&table_scan, logical_plan.as_ref()),
         }
     }
 }

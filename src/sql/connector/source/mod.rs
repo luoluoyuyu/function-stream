@@ -10,17 +10,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sql::schema::SinkTable;
-
-use super::{PlanNode, PlanVisitor, PlanVisitorContext, PlanVisitorResult};
-
-#[derive(Debug)]
-pub struct StreamingTableConnectorPlan {
-    pub table: SinkTable,
-}
-
-impl PlanNode for StreamingTableConnectorPlan {
-    fn accept(&self, visitor: &dyn PlanVisitor, context: &PlanVisitorContext) -> PlanVisitorResult {
-        visitor.visit_streaming_connector_table(self, context)
-    }
-}
+pub mod kafka;

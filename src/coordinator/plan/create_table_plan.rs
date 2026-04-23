@@ -12,16 +12,16 @@
 
 use datafusion::logical_expr::LogicalPlan;
 
-use crate::sql::schema::SourceTable;
+use crate::sql::schema::ExternalTable;
 
 use super::{PlanNode, PlanVisitor, PlanVisitorContext, PlanVisitorResult};
 
-/// Payload for [`CreateTablePlan`]: either a DataFusion DDL plan or a connector `CREATE TABLE` (no `AS SELECT`).
+/// DataFusion DDL, or `CREATE TABLE` with connector → [`ExternalTable`].
 #[derive(Debug, Clone)]
 pub enum CreateTablePlanBody {
     DataFusion(Box<LogicalPlan>),
-    ConnectorSource {
-        source_table: Box<SourceTable>,
+    External {
+        table: Box<ExternalTable>,
         if_not_exists: bool,
     },
 }
@@ -38,10 +38,11 @@ impl CreateTablePlan {
         }
     }
 
-    pub fn connector_source(source_table: SourceTable, if_not_exists: bool) -> Self {
+    /// [`ExternalTable`] from the DDL compiler.
+    pub fn external_table(table: ExternalTable, if_not_exists: bool) -> Self {
         Self {
-            body: CreateTablePlanBody::ConnectorSource {
-                source_table: Box::new(source_table),
+            body: CreateTablePlanBody::External {
+                table: Box::new(table),
                 if_not_exists,
             },
         }

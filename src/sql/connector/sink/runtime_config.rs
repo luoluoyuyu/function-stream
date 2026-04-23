@@ -34,8 +34,12 @@ pub type SinkRuntimeProperties = HashMap<String, String>;
 
 impl SinkRuntimeConfig {
     pub fn extract_from_options(options: &mut ConnectorOptions) -> Result<Self> {
-        let pipeline_parallelism = options.pull_opt_u64(opt::PIPELINE_PARALLELISM)?.map(|v| v as u32);
-        let key_by_parallelism = options.pull_opt_u64(opt::KEY_BY_PARALLELISM)?.map(|v| v as u32);
+        let pipeline_parallelism = options
+            .pull_opt_u64(opt::PIPELINE_PARALLELISM)?
+            .map(|v| v as u32);
+        let key_by_parallelism = options
+            .pull_opt_u64(opt::KEY_BY_PARALLELISM)?
+            .map(|v| v as u32);
         let checkpoint_interval_ms = options
             .pull_opt_u64(opt::CHECKPOINT_INTERVAL_MS)?
             .unwrap_or(DEFAULT_CHECKPOINT_INTERVAL_MS);

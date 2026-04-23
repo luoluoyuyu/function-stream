@@ -17,7 +17,8 @@ use arrow_schema::{DataType, Field, Schema};
 use datafusion::arrow::datatypes::Schema as DfSchema;
 
 use super::DataSet;
-use crate::sql::schema::table::Table as CatalogTable;
+use crate::sql::schema::catalog::ExternalTable;
+use crate::sql::schema::table::CatalogEntity;
 use crate::sql::schema::{catalog_table_row_detail, schema_columns_one_line};
 
 #[derive(Clone, Debug)]
@@ -30,7 +31,7 @@ pub struct ShowCatalogTablesResult {
 }
 
 impl ShowCatalogTablesResult {
-    pub fn from_tables(tables: &[Arc<CatalogTable>]) -> Self {
+    pub fn from_tables(tables: &[Arc<CatalogEntity>]) -> Self {
         let mut names = Vec::with_capacity(tables.len());
         let mut kinds = Vec::with_capacity(tables.len());
         let mut column_counts = Vec::with_capacity(tables.len());
@@ -39,18 +40,19 @@ impl ShowCatalogTablesResult {
 
         for t in tables {
             let schema = match t.as_ref() {
-                CatalogTable::ConnectorTable(source) | CatalogTable::LookupTable(source) => {
-                    source.produce_physical_schema()
-                }
-                CatalogTable::TableFromQuery { .. } => DfSchema::new(t.get_fields()),
+                CatalogEntity::ExternalConnector(b) => b.as_ref().produce_physical_schema(),
+                CatalogEntity::ComputedTable { .. } => DfSchema::new(t.get_fields()),
             };
             let ncols = schema.fields().len() as i32;
             names.push(t.name().to_string());
             kinds.push(
                 match t.as_ref() {
-                    CatalogTable::ConnectorTable(_) => "SOURCE",
-                    CatalogTable::LookupTable(_) => "LOOKUP",
-                    CatalogTable::TableFromQuery { .. } => "QUERY",
+                    CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                        ExternalTable::Source(_) => "SOURCE",
+                        ExternalTable::Sink(_) => "SINK",
+                        ExternalTable::Lookup(_) => "LOOKUP",
+                    },
+                    CatalogEntity::ComputedTable { .. } => "QUERY",
                 }
                 .to_string(),
             );

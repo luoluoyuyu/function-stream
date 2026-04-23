@@ -22,9 +22,8 @@ use crate::coordinator::dataset::{
 };
 use crate::coordinator::plan::{
     CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan,
-    CreateTablePlanBody,
-    DropFunctionPlan, DropStreamingTablePlan, DropTablePlan, LookupTablePlan, PlanNode,
-    PlanVisitor, PlanVisitorContext, PlanVisitorResult, ShowCatalogTablesPlan,
+    CreateTablePlanBody, DropFunctionPlan, DropStreamingTablePlan, DropTablePlan, LookupTablePlan,
+    PlanNode, PlanVisitor, PlanVisitorContext, PlanVisitorResult, ShowCatalogTablesPlan,
     ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan, ShowStreamingTablesPlan,
     StartFunctionPlan, StopFunctionPlan, StreamingTable, StreamingTableConnectorPlan,
 };
@@ -35,8 +34,9 @@ use crate::coordinator::streaming_table_options::{
 use crate::runtime::streaming::job::JobManager;
 use crate::runtime::streaming::protocol::control::StopMode;
 use crate::runtime::wasm::taskexecutor::TaskManager;
+use crate::sql::schema::catalog::ExternalTable;
 use crate::sql::schema::show_create_catalog_table;
-use crate::sql::schema::table::Table as CatalogTable;
+use crate::sql::schema::table::CatalogEntity;
 use crate::storage::stream_catalog::CatalogManager;
 
 #[derive(Error, Debug)]
@@ -284,13 +284,17 @@ impl PlanVisitor for Executor {
     ) -> PlanVisitorResult {
         let execute = || -> Result<ExecuteResult, ExecuteError> {
             let (table_name, if_not_exists, catalog_table) = match &plan.body {
-                CreateTablePlanBody::ConnectorSource {
-                    source_table,
+                CreateTablePlanBody::External {
+                    table,
                     if_not_exists,
                 } => {
-                    let table_name = source_table.name().to_string();
-                    let table_instance =
-                        CatalogTable::ConnectorTable(source_table.as_ref().clone());
+                    if matches!(table.as_ref(), ExternalTable::Sink(_)) {
+                        return Err(ExecuteError::Internal(
+                            "`CREATE TABLE` cannot produce a Sink; use `CREATE STREAMING TABLE ... AS SELECT`".into(),
+                        ));
+                    }
+                    let table_name = table.name().to_string();
+                    let table_instance = CatalogEntity::external(table.as_ref().clone());
                     (table_name, *if_not_exists, table_instance)
                 }
                 CreateTablePlanBody::DataFusion(_) => {
@@ -311,13 +315,12 @@ impl PlanVisitor for Executor {
                 .add_catalog_table(catalog_table)
                 .map_err(|e| {
                     ExecuteError::Internal(format!(
-                        "Failed to register connector source table '{}': {}",
-                        table_name, e
+                        "Failed to register external table '{table_name}': {e}"
                     ))
                 })?;
 
             Ok(ExecuteResult::ok(format!(
-                "Created connector source table '{table_name}'"
+                "Created external table '{table_name}'"
             )))
         };
 

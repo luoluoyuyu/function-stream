@@ -25,8 +25,6 @@ pub mod var_str;
 
 use serde::{Deserialize, Serialize};
 
-pub use connections::ConnectionProfile;
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginatedCollection<T> {

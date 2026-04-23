@@ -14,6 +14,7 @@ pub mod api;
 pub mod common;
 
 pub mod analysis;
+pub mod connector;
 pub mod functions;
 pub mod logical_node;
 pub mod logical_planner;

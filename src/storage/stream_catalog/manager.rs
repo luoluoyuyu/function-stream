@@ -10,6 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
@@ -24,10 +25,12 @@ use crate::runtime::streaming::operators::source::kafka as kafka_snap;
 use unicase::UniCase;
 
 use crate::sql::common::constants::sql_field;
+use crate::sql::connector::config::ConnectorConfig;
+use crate::sql::schema::catalog::{ExternalTable, LookupTable, SourceTable};
 use crate::sql::schema::column_descriptor::ColumnDescriptor;
-use crate::sql::schema::connection_type::ConnectionType;
-use crate::sql::schema::source_table::SourceTable;
-use crate::sql::schema::table::Table as CatalogTable;
+use crate::sql::schema::table::CatalogEntity;
+use crate::sql::schema::table_role::TableRole;
+use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
 use crate::sql::schema::{StreamPlanningContext, StreamTable};
 
 use super::codec::CatalogCodec;
@@ -294,7 +297,7 @@ impl CatalogManager {
     // Catalog table persistence (CREATE TABLE / DROP TABLE)
     // ========================================================================
 
-    pub fn add_catalog_table(&self, table: CatalogTable) -> DFResult<()> {
+    pub fn add_catalog_table(&self, table: CatalogEntity) -> DFResult<()> {
         let proto_def = self.encode_catalog_table(&table)?;
         let payload = proto_def.encode_to_vec();
         let key = Self::build_store_key(table.name());
@@ -332,36 +335,44 @@ impl CatalogManager {
         ctx.tables.catalogs = catalogs.clone();
 
         for (name, table) in catalogs {
-            let source = match table.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => s,
-                CatalogTable::TableFromQuery { .. } => continue,
+            let stream = match table.as_ref() {
+                CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                    ExternalTable::Source(s) => Some(StreamTable::Source {
+                        name: s.name().to_string(),
+                        connector: s.connector().to_string(),
+                        schema: Arc::new(s.produce_physical_schema()),
+                        event_time_field: s.event_time_field().map(str::to_string),
+                        watermark_field: s.stream_catalog_watermark_field(),
+                        with_options: s.catalog_with_options().clone(),
+                    }),
+                    ExternalTable::Lookup(l) => Some(StreamTable::Source {
+                        name: l.name().to_string(),
+                        connector: l.connector().to_string(),
+                        schema: Arc::new(l.produce_physical_schema()),
+                        event_time_field: None,
+                        watermark_field: None,
+                        with_options: l.catalog_with_options().clone(),
+                    }),
+                    ExternalTable::Sink(_) => None,
+                },
+                CatalogEntity::ComputedTable { .. } => None,
             };
-
-            let schema = Arc::new(source.produce_physical_schema());
-            ctx.tables.streams.insert(
-                name,
-                Arc::new(StreamTable::Source {
-                    name: source.name().to_string(),
-                    connector: source.connector().to_string(),
-                    schema,
-                    event_time_field: source.event_time_field().map(str::to_string),
-                    watermark_field: source.stream_catalog_watermark_field(),
-                    with_options: source.catalog_with_options().clone(),
-                }),
-            );
+            if let Some(st) = stream {
+                ctx.tables.streams.insert(name, Arc::new(st));
+            }
         }
         ctx
     }
 
     /// All persisted catalog tables, sorted by table name.
-    pub fn list_catalog_tables(&self) -> DFResult<Vec<Arc<CatalogTable>>> {
-        let mut out: Vec<Arc<CatalogTable>> =
+    pub fn list_catalog_tables(&self) -> DFResult<Vec<Arc<CatalogEntity>>> {
+        let mut out: Vec<Arc<CatalogEntity>> =
             self.load_catalog_tables_map()?.into_values().collect();
         out.sort_by(|a, b| a.name().cmp(b.name()));
         Ok(out)
     }
 
-    pub fn get_catalog_table(&self, name: &str) -> DFResult<Option<Arc<CatalogTable>>> {
+    pub fn get_catalog_table(&self, name: &str) -> DFResult<Option<Arc<CatalogEntity>>> {
         let key = UniCase::new(name.to_string());
         Ok(self.load_catalog_tables_map()?.get(&key).cloned())
     }
@@ -376,17 +387,40 @@ impl CatalogManager {
                 watermark_field,
                 with_options,
             } => {
-                let mut source = SourceTable::new(name, connector, ConnectionType::Source);
-                source.schema_specs = schema
+                let schema_specs: Vec<ColumnDescriptor> = schema
                     .fields()
                     .iter()
                     .map(|f| ColumnDescriptor::new_physical((**f).clone()))
                     .collect();
-                source.inferred_fields = Some(schema.fields().iter().cloned().collect());
-                source.temporal_config.event_column = event_time_field;
-                source.temporal_config.watermark_strategy_column = watermark_field;
-                source.catalog_with_options = with_options;
-                self.add_catalog_table(CatalogTable::ConnectorTable(source))
+                let inferred_fields = Some(schema.fields().iter().cloned().collect());
+                let physical_schema = schema.as_ref().clone();
+
+                let connector_config = build_connector_config_for_role(
+                    &connector,
+                    TableRole::Ingestion,
+                    &with_options,
+                    &physical_schema,
+                )?;
+
+                let source = SourceTable {
+                    table_identifier: name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    temporal_config: TemporalPipelineConfig {
+                        event_column: event_time_field,
+                        watermark_strategy_column: watermark_field,
+                        liveness_timeout: None,
+                    },
+                    key_constraints: Vec::new(),
+                    payload_format: None,
+                    connection_format: None,
+                    description: String::new(),
+                    catalog_with_options: with_options.into_iter().collect(),
+                    registry_id: None,
+                    inferred_fields,
+                };
+                self.add_catalog_table(CatalogEntity::external(ExternalTable::Source(source)))
             }
             StreamTable::Sink { name, .. } => plan_err!(
                 "Persisting streaming sink '{name}' in stream catalog is no longer supported"
@@ -406,19 +440,7 @@ impl CatalogManager {
         self.list_catalog_tables()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|t| match t.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => {
-                    Some(Arc::new(StreamTable::Source {
-                        name: s.name().to_string(),
-                        connector: s.connector().to_string(),
-                        schema: Arc::new(s.produce_physical_schema()),
-                        event_time_field: s.event_time_field().map(str::to_string),
-                        watermark_field: s.stream_catalog_watermark_field(),
-                        with_options: s.catalog_with_options().clone(),
-                    }))
-                }
-                CatalogTable::TableFromQuery { .. } => None,
-            })
+            .filter_map(|t| external_to_stream_table(t.as_ref()).map(Arc::new))
             .collect()
     }
 
@@ -426,44 +448,54 @@ impl CatalogManager {
         self.get_catalog_table(name)
             .ok()
             .flatten()
-            .and_then(|t| match t.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => {
-                    Some(Arc::new(StreamTable::Source {
-                        name: s.name().to_string(),
-                        connector: s.connector().to_string(),
-                        schema: Arc::new(s.produce_physical_schema()),
-                        event_time_field: s.event_time_field().map(str::to_string),
-                        watermark_field: s.stream_catalog_watermark_field(),
-                        with_options: s.catalog_with_options().clone(),
-                    }))
-                }
-                CatalogTable::TableFromQuery { .. } => None,
-            })
+            .and_then(|t| external_to_stream_table(t.as_ref()).map(Arc::new))
     }
 
-    fn encode_catalog_table(&self, table: &CatalogTable) -> DFResult<pb::TableDefinition> {
+    fn encode_catalog_table(&self, table: &CatalogEntity) -> DFResult<pb::TableDefinition> {
         let table_type = match table {
-            CatalogTable::ConnectorTable(source) | CatalogTable::LookupTable(source) => {
-                let mut opts = source.catalog_with_options().clone();
-                opts.entry("connector".to_string())
-                    .or_insert_with(|| source.connector().to_string());
-                let catalog_row = pb::CatalogSourceTable {
-                    arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
-                        source.produce_physical_schema(),
-                    ))?,
-                    event_time_field: source.event_time_field().map(str::to_string),
-                    watermark_field: source.stream_catalog_watermark_field(),
-                    with_options: opts.into_iter().collect(),
-                    connector: source.connector().to_string(),
-                    description: source.description.clone(),
-                };
-                if matches!(table, CatalogTable::LookupTable(_)) {
-                    table_definition::TableType::LookupTable(catalog_row)
-                } else {
+            CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                ExternalTable::Source(source) => {
+                    let mut opts: std::collections::HashMap<String, String> =
+                        source.catalog_with_options.clone().into_iter().collect();
+                    opts.entry("connector".to_string())
+                        .or_insert_with(|| source.connector().to_string());
+                    let catalog_row = pb::CatalogSourceTable {
+                        arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
+                            source.produce_physical_schema(),
+                        ))?,
+                        event_time_field: source.event_time_field().map(str::to_string),
+                        watermark_field: source.stream_catalog_watermark_field(),
+                        with_options: opts,
+                        connector: source.connector().to_string(),
+                        description: source.description.clone(),
+                    };
                     table_definition::TableType::ConnectorTable(catalog_row)
                 }
-            }
-            CatalogTable::TableFromQuery { name, .. } => {
+                ExternalTable::Lookup(lookup) => {
+                    let mut opts: std::collections::HashMap<String, String> =
+                        lookup.catalog_with_options.clone().into_iter().collect();
+                    opts.entry("connector".to_string())
+                        .or_insert_with(|| lookup.connector().to_string());
+                    let catalog_row = pb::CatalogSourceTable {
+                        arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
+                            lookup.produce_physical_schema(),
+                        ))?,
+                        event_time_field: None,
+                        watermark_field: None,
+                        with_options: opts,
+                        connector: lookup.connector().to_string(),
+                        description: lookup.description.clone(),
+                    };
+                    table_definition::TableType::LookupTable(catalog_row)
+                }
+                ExternalTable::Sink(sink) => {
+                    return plan_err!(
+                        "Persisting SINK table '{}' in stream catalog is not supported",
+                        sink.name()
+                    );
+                }
+            },
+            CatalogEntity::ComputedTable { name, .. } => {
                 return plan_err!(
                     "Persisting query-defined table '{}' is not supported by stream catalog storage",
                     name
@@ -483,7 +515,7 @@ impl CatalogManager {
         table_name: String,
         source_row: pb::CatalogSourceTable,
         as_lookup: bool,
-    ) -> DFResult<CatalogTable> {
+    ) -> DFResult<CatalogEntity> {
         let connector = if source_row.connector.is_empty() {
             source_row
                 .with_options
@@ -493,50 +525,75 @@ impl CatalogManager {
         } else {
             source_row.connector.clone()
         };
-        let mut source = SourceTable::new(
-            table_name,
-            connector,
-            if as_lookup {
-                ConnectionType::Lookup
-            } else {
-                ConnectionType::Source
-            },
-        );
+
         let schema = CatalogCodec::decode_schema(&source_row.arrow_schema_ipc)?;
-        source.schema_specs = schema
+        let schema_specs: Vec<ColumnDescriptor> = schema
             .fields()
             .iter()
             .map(|f| ColumnDescriptor::new_physical((**f).clone()))
             .collect();
-        source.inferred_fields = Some(schema.fields().iter().cloned().collect());
-        source.temporal_config.event_column = source_row.event_time_field;
-        source.temporal_config.watermark_strategy_column = source_row
-            .watermark_field
-            .filter(|w| w != sql_field::COMPUTED_WATERMARK);
-        source.catalog_with_options = source_row.with_options.into_iter().collect();
-        source.description = source_row.description;
+        let inferred_fields = Some(schema.fields().iter().cloned().collect());
+        let physical_schema = schema.as_ref().clone();
+        let catalog_with_options: BTreeMap<String, String> =
+            source_row.with_options.clone().into_iter().collect();
 
-        let opts: std::collections::HashMap<String, String> = source
-            .catalog_with_options
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        source.connector_config =
-            crate::sql::schema::connector_config_factory::build_connector_config_from_catalog(
-                source.connector(),
-                source.role,
-                opts,
-                &source.produce_physical_schema(),
-            )?;
+        let role = if as_lookup {
+            TableRole::Reference
+        } else {
+            TableRole::Ingestion
+        };
+        let connector_config = build_connector_config_for_role(
+            &connector,
+            role,
+            &source_row.with_options,
+            &physical_schema,
+        )?;
 
         if as_lookup {
-            Ok(CatalogTable::LookupTable(source))
+            Ok(CatalogEntity::external(ExternalTable::Lookup(
+                LookupTable {
+                    table_identifier: table_name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    key_constraints: Vec::new(),
+                    lookup_cache_max_bytes: None,
+                    lookup_cache_ttl: None,
+                    connection_format: None,
+                    description: source_row.description,
+                    catalog_with_options,
+                    registry_id: None,
+                    inferred_fields,
+                },
+            )))
         } else {
-            Ok(CatalogTable::ConnectorTable(source))
+            let watermark_field = source_row
+                .watermark_field
+                .filter(|w| w != sql_field::COMPUTED_WATERMARK);
+            Ok(CatalogEntity::external(ExternalTable::Source(
+                SourceTable {
+                    table_identifier: table_name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    temporal_config: TemporalPipelineConfig {
+                        event_column: source_row.event_time_field,
+                        watermark_strategy_column: watermark_field,
+                        liveness_timeout: None,
+                    },
+                    key_constraints: Vec::new(),
+                    payload_format: None,
+                    connection_format: None,
+                    description: source_row.description,
+                    catalog_with_options,
+                    registry_id: None,
+                    inferred_fields,
+                },
+            )))
         }
     }
 
-    fn decode_catalog_table(&self, proto_def: pb::TableDefinition) -> DFResult<CatalogTable> {
+    fn decode_catalog_table(&self, proto_def: pb::TableDefinition) -> DFResult<CatalogEntity> {
         let Some(table_type) = proto_def.table_type else {
             return internal_err!(
                 "Corrupted catalog row: missing table_type for {}",
@@ -556,7 +613,7 @@ impl CatalogManager {
 
     fn load_catalog_tables_map(
         &self,
-    ) -> DFResult<std::collections::HashMap<crate::sql::schema::ObjectName, Arc<CatalogTable>>>
+    ) -> DFResult<std::collections::HashMap<crate::sql::schema::ObjectName, Arc<CatalogEntity>>>
     {
         let mut out = std::collections::HashMap::new();
         let records = self.store.scan_prefix(CATALOG_KEY_PREFIX)?;
@@ -587,6 +644,52 @@ impl CatalogManager {
             out.insert(object_name, Arc::new(table));
         }
         Ok(out)
+    }
+}
+
+fn build_connector_config_for_role<M>(
+    connector: &str,
+    role: TableRole,
+    with_options: &M,
+    physical_schema: &datafusion::arrow::datatypes::Schema,
+) -> DFResult<ConnectorConfig>
+where
+    for<'a> &'a M: IntoIterator<Item = (&'a String, &'a String)>,
+{
+    let flat: std::collections::HashMap<String, String> = with_options
+        .into_iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    crate::sql::connector::factory::build_connector_config_from_catalog(
+        connector,
+        role,
+        flat,
+        physical_schema,
+    )
+}
+
+fn external_to_stream_table(table: &CatalogEntity) -> Option<StreamTable> {
+    match table {
+        CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+            ExternalTable::Source(s) => Some(StreamTable::Source {
+                name: s.name().to_string(),
+                connector: s.connector().to_string(),
+                schema: Arc::new(s.produce_physical_schema()),
+                event_time_field: s.event_time_field().map(str::to_string),
+                watermark_field: s.stream_catalog_watermark_field(),
+                with_options: s.catalog_with_options().clone(),
+            }),
+            ExternalTable::Lookup(l) => Some(StreamTable::Source {
+                name: l.name().to_string(),
+                connector: l.connector().to_string(),
+                schema: Arc::new(l.produce_physical_schema()),
+                event_time_field: None,
+                watermark_field: None,
+                with_options: l.catalog_with_options().clone(),
+            }),
+            ExternalTable::Sink(_) => None,
+        },
+        CatalogEntity::ComputedTable { .. } => None,
     }
 }
 
@@ -749,10 +852,11 @@ mod tests {
 
     use datafusion::arrow::datatypes::{DataType, Field};
 
+    use crate::sql::connector::config::ConnectorConfig;
+    use crate::sql::schema::catalog::{ExternalTable, SourceTable};
     use crate::sql::schema::column_descriptor::ColumnDescriptor;
-    use crate::sql::schema::connection_type::ConnectionType;
-    use crate::sql::schema::source_table::SourceTable;
-    use crate::sql::schema::table::Table as CatalogTable;
+    use crate::sql::schema::table::CatalogEntity;
+    use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
     use crate::storage::stream_catalog::InMemoryMetaStore;
 
     use super::CatalogManager;
@@ -761,17 +865,35 @@ mod tests {
         CatalogManager::new(Arc::new(InMemoryMetaStore::new()))
     }
 
+    fn make_test_source(name: &str) -> SourceTable {
+        SourceTable {
+            table_identifier: name.to_string(),
+            adapter_type: "kafka".to_string(),
+            schema_specs: vec![ColumnDescriptor::new_physical(Field::new(
+                "a",
+                DataType::Int32,
+                false,
+            ))],
+            connector_config: ConnectorConfig::KafkaSource(
+                protocol::function_stream_graph::KafkaSourceConfig::default(),
+            ),
+            temporal_config: TemporalPipelineConfig::default(),
+            key_constraints: Vec::new(),
+            payload_format: None,
+            connection_format: None,
+            description: String::new(),
+            catalog_with_options: std::collections::BTreeMap::new(),
+            registry_id: None,
+            inferred_fields: None,
+        }
+    }
+
     #[test]
     fn add_table_roundtrip_snapshot() {
         let mgr = create_test_manager();
-        let mut source = SourceTable::new("t1", "kafka", ConnectionType::Source);
-        source.schema_specs = vec![ColumnDescriptor::new_physical(Field::new(
-            "a",
-            DataType::Int32,
-            false,
-        ))];
+        let mut source = make_test_source("t1");
         source.temporal_config.event_column = Some("ts".into());
-        let table = CatalogTable::ConnectorTable(source);
+        let table = CatalogEntity::external(ExternalTable::Source(source));
 
         mgr.add_catalog_table(table).unwrap();
 
@@ -782,13 +904,8 @@ mod tests {
     #[test]
     fn drop_table_if_exists() {
         let mgr = create_test_manager();
-        let mut source = SourceTable::new("t_drop", "kafka", ConnectionType::Source);
-        source.schema_specs = vec![ColumnDescriptor::new_physical(Field::new(
-            "a",
-            DataType::Int32,
-            false,
-        ))];
-        mgr.add_catalog_table(CatalogTable::ConnectorTable(source))
+        let source = make_test_source("t_drop");
+        mgr.add_catalog_table(CatalogEntity::external(ExternalTable::Source(source)))
             .unwrap();
 
         mgr.drop_catalog_table("t_drop", false).unwrap();

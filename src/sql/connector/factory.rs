@@ -15,13 +15,12 @@ use std::collections::HashMap;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::common::Result;
 
-use super::connector_config::ConnectorConfig;
-use super::connector_registry::REGISTRY;
-use super::kafka_operator_config::build_kafka_proto_config_from_string_map;
-use super::sink_runtime_config::SinkRuntimeConfig;
-use super::table_role::TableRole;
+use super::config::ConnectorConfig;
+use super::registry::REGISTRY;
+use super::sink::runtime_config::SinkRuntimeConfig;
 use crate::sql::common::connector_options::ConnectorOptions;
 use crate::sql::common::formats::{BadData, Format};
+use crate::sql::schema::table_role::TableRole;
 
 pub fn build_connector_config(
     connector_name: &str,
@@ -31,16 +30,17 @@ pub fn build_connector_config(
     bad_data: BadData,
 ) -> Result<ConnectorConfig> {
     let runtime_opts_map = options.snapshot_for_catalog().into_iter().collect();
-    let runtime_props = SinkRuntimeConfig::from_options_map(&runtime_opts_map)?.to_runtime_properties();
+    let runtime_props =
+        SinkRuntimeConfig::from_options_map(&runtime_opts_map)?.to_runtime_properties();
     match role {
-        TableRole::Ingestion | TableRole::Reference => {
+        TableRole::Ingestion | TableRole::Reference => REGISTRY
+            .get_source(connector_name)?
+            .build_source_config(options, format, bad_data),
+        TableRole::Egress => {
             REGISTRY
-                .get_source(connector_name)?
-                .build_source_config(options, format, bad_data)
+                .get_sink(connector_name)?
+                .build_sink_config(options, format, &runtime_props)
         }
-        TableRole::Egress => REGISTRY
-            .get_sink(connector_name)?
-            .build_sink_config(options, format, &runtime_props),
     }
 }
 
@@ -58,25 +58,8 @@ pub fn build_connector_config_from_catalog(
     connector_name: &str,
     role: TableRole,
     opts: HashMap<String, String>,
-    physical_schema: &Schema,
+    _physical_schema: &Schema,
 ) -> Result<ConnectorConfig> {
-    if connector_name.eq_ignore_ascii_case("kafka") {
-        return match (role, build_kafka_proto_config_from_string_map(opts, physical_schema)?) {
-            (TableRole::Ingestion | TableRole::Reference, protocol::function_stream_graph::connector_op::Config::KafkaSource(cfg)) => {
-                Ok(ConnectorConfig::KafkaSource(cfg))
-            }
-            (TableRole::Egress, protocol::function_stream_graph::connector_op::Config::KafkaSink(cfg)) => {
-                Ok(ConnectorConfig::KafkaSink(cfg))
-            }
-            (TableRole::Ingestion | TableRole::Reference, _) => {
-                datafusion::common::plan_err!("catalog kafka source role requires kafka_source config")
-            }
-            (TableRole::Egress, _) => {
-                datafusion::common::plan_err!("catalog kafka sink role requires kafka_sink config")
-            }
-        };
-    }
-
     let mut options = ConnectorOptions::from_flat_string_map(opts)?;
     let format = Format::from_opts(&mut options)?;
     let bad_data = BadData::from_opts(&mut options)?;

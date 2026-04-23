@@ -12,10 +12,10 @@
 
 use datafusion::common::{DataFusionError, Result};
 
+use super::config::ConnectorConfig;
+use super::sink::runtime_config::SinkRuntimeProperties;
 use crate::sql::common::connector_options::ConnectorOptions;
 use crate::sql::common::formats::{BadData, Format};
-use super::connector_config::ConnectorConfig;
-use super::sink_runtime_config::SinkRuntimeProperties;
 
 pub trait SourceProvider: Send + Sync {
     fn name(&self) -> &'static str;

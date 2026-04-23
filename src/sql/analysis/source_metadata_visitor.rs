@@ -51,7 +51,11 @@ impl<'a> SourceMetadataVisitor<'a> {
 
         let table = self.schema_provider.get_catalog_table(&table_name)?;
         match table {
-            crate::sql::schema::table::Table::ConnectorTable(t) => t.registry_id,
+            crate::sql::schema::table::CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                crate::sql::schema::catalog::ExternalTable::Source(t) => t.registry_id,
+                crate::sql::schema::catalog::ExternalTable::Lookup(t) => t.registry_id,
+                _ => None,
+            },
             _ => None,
         }
     }
