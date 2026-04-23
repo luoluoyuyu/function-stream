@@ -11,17 +11,15 @@
 // limitations under the License.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{Context, anyhow, bail};
+use anyhow::{anyhow, bail};
 use datafusion::common::{Result as DFResult, internal_err, plan_err};
 use prost::Message;
 use protocol::function_stream_graph::FsProgram;
 use protocol::storage::{self as pb, table_definition};
 use tracing::{debug, info, warn};
 
-use crate::runtime::streaming::operators::source::kafka as kafka_snap;
 use unicase::UniCase;
 
 use crate::sql::common::constants::sql_field;
@@ -39,91 +37,16 @@ use super::meta_store::MetaStore;
 const CATALOG_KEY_PREFIX: &str = "catalog:stream_table:";
 const STREAMING_JOB_KEY_PREFIX: &str = "streaming_job:";
 
-/// One persisted streaming job row from catalog (program + checkpoint metadata + Kafka offsets).
+/// One persisted streaming job row from catalog (program + checkpoint metadata).
 #[derive(Debug, Clone)]
 pub struct StoredStreamingJob {
     pub table_name: String,
     pub program: FsProgram,
     pub checkpoint_interval_ms: u64,
     pub latest_checkpoint_epoch: u64,
-    pub kafka_source_checkpoints: Vec<pb::KafkaSourceSubtaskCheckpoint>,
-}
-
-fn parse_kafka_offset_snapshot_filename(name: &str) -> Option<(u32, u32)> {
-    const PREFIX: &str = "kafka_source_offsets_pipe";
-    const SUFFIX: &str = ".bin";
-    if !name.starts_with(PREFIX) || !name.ends_with(SUFFIX) {
-        return None;
-    }
-    let mid = name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?;
-    let (pipe, sub_part) = mid.split_once("_sub")?;
-    Some((pipe.parse().ok()?, sub_part.parse().ok()?))
-}
-
-/// Removes on-disk staging snapshots once their payload is committed into catalog (same epoch).
-fn cleanup_kafka_offset_snapshots_for_epoch(job_dir: &Path, epoch: u64) {
-    let Ok(rd) = std::fs::read_dir(job_dir) else {
-        return;
-    };
-    for ent in rd.flatten() {
-        let path = ent.path();
-        let name = ent.file_name().to_string_lossy().into_owned();
-        if parse_kafka_offset_snapshot_filename(&name).is_none() {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&path) else {
-            continue;
-        };
-        let Ok(saved) = kafka_snap::decode_kafka_offset_snapshot(&bytes) else {
-            continue;
-        };
-        if saved.epoch == epoch && std::fs::remove_file(&path).is_err() {
-            debug!(path = %path.display(), "Could not remove staged Kafka offset snapshot (non-fatal)");
-        }
-    }
-}
-
-/// Writes catalog-stored Kafka checkpoints back to the job state dir before `submit_job` resumes sources.
-pub fn materialize_kafka_source_checkpoints_from_catalog(
-    job_dir: &Path,
-    checkpoints: &[pb::KafkaSourceSubtaskCheckpoint],
-) -> DFResult<()> {
-    if checkpoints.is_empty() {
-        return Ok(());
-    }
-    std::fs::create_dir_all(job_dir).map_err(|e| {
-        datafusion::common::DataFusionError::Execution(format!(
-            "create job state dir {}: {e}",
-            job_dir.display()
-        ))
-    })?;
-    for c in checkpoints {
-        let saved = kafka_snap::KafkaSourceSavedOffsets {
-            epoch: c.checkpoint_epoch,
-            partitions: c
-                .partitions
-                .iter()
-                .map(|p| kafka_snap::KafkaState {
-                    partition: p.partition,
-                    offset: p.offset,
-                })
-                .collect(),
-        };
-        let path = kafka_snap::kafka_snapshot_path(job_dir, c.pipeline_id, c.subtask_index);
-        let bytes = kafka_snap::encode_kafka_offset_snapshot(&saved).map_err(|e| {
-            datafusion::common::DataFusionError::Execution(format!(
-                "encode kafka snapshot for {}: {e}",
-                path.display()
-            ))
-        })?;
-        std::fs::write(&path, &bytes).map_err(|e| {
-            datafusion::common::DataFusionError::Execution(format!(
-                "write kafka snapshot {}: {e}",
-                path.display()
-            ))
-        })?;
-    }
-    Ok(())
+    /// Source-type-agnostic per-subtask checkpoint entries. Each entry is a
+    /// [`pb::SourceCheckpointInfo`] oneof envelope — the catalog does not inspect the payload.
+    pub source_checkpoints: Vec<pb::SourceCheckpointInfo>,
 }
 
 pub struct CatalogManager {
@@ -191,7 +114,7 @@ impl CatalogManager {
             comment: comment.to_string(),
             checkpoint_interval_ms,
             latest_checkpoint_epoch: 0,
-            kafka_source_checkpoints: vec![],
+            source_checkpoints: vec![],
         };
         let payload = def.encode_to_vec();
         let key = Self::build_streaming_job_key(table_name);
@@ -210,16 +133,14 @@ impl CatalogManager {
     /// Persist the globally-completed checkpoint epoch after all operators ACK.
     /// Only advances forward; stale epochs are silently ignored.
     ///
-    /// `kafka_source_checkpoints` is assembled by the job coordinator from source pipeline checkpoint
-    /// ACKs (in-memory); it is stored next to `latest_checkpoint_epoch` in the catalog.
-    ///
-    /// `job_state_dir` is only used to remove legacy on-disk staging snapshots for this epoch, if present.
+    /// `source_checkpoints` is the source-agnostic list assembled by the job coordinator via
+    /// [`CheckpointAggregatorRegistry::aggregate_all`]; it is stored atomically next to
+    /// `latest_checkpoint_epoch` via [`MetaStore::write_batch`].
     pub fn commit_job_checkpoint(
         &self,
         table_name: &str,
         epoch: u64,
-        job_state_dir: &Path,
-        kafka_source_checkpoints: Vec<pb::KafkaSourceSubtaskCheckpoint>,
+        source_checkpoints: Vec<pb::SourceCheckpointInfo>,
     ) -> DFResult<()> {
         let key = Self::build_streaming_job_key(table_name);
 
@@ -240,22 +161,21 @@ impl CatalogManager {
 
         if epoch > def.latest_checkpoint_epoch {
             def.latest_checkpoint_epoch = epoch;
-            def.kafka_source_checkpoints = kafka_source_checkpoints;
-            let new_payload = def.encode_to_vec();
-            self.store.put(&key, new_payload)?;
+            def.source_checkpoints = source_checkpoints;
+            self.store
+                .write_batch(vec![(key, Some(def.encode_to_vec()))])?;
             debug!(
                 table = %table_name,
                 epoch = epoch,
-                kafka_subtasks = def.kafka_source_checkpoints.len(),
-                "Checkpoint metadata committed to Catalog"
+                source_subtasks = def.source_checkpoints.len(),
+                "Checkpoint metadata committed to Catalog (write_batch)"
             );
-            cleanup_kafka_offset_snapshots_for_epoch(job_state_dir, epoch);
         }
 
         Ok(())
     }
 
-    /// Load all persisted streaming jobs (including Kafka offset checkpoints for restore).
+    /// Load all persisted streaming jobs (including source checkpoint data for restore).
     pub fn load_streaming_job_definitions(&self) -> DFResult<Vec<StoredStreamingJob>> {
         let records = self.store.scan_prefix(STREAMING_JOB_KEY_PREFIX)?;
         let mut out = Vec::with_capacity(records.len());
@@ -287,7 +207,7 @@ impl CatalogManager {
                 program,
                 checkpoint_interval_ms: def.checkpoint_interval_ms,
                 latest_checkpoint_epoch: def.latest_checkpoint_epoch,
-                kafka_source_checkpoints: def.kafka_source_checkpoints,
+                source_checkpoints: def.source_checkpoints,
             });
         }
         Ok(out)
@@ -759,21 +679,10 @@ pub fn restore_streaming_jobs_from_store() {
             program,
             checkpoint_interval_ms: interval_ms,
             latest_checkpoint_epoch: latest_epoch,
-            kafka_source_checkpoints,
+            source_checkpoints,
         } = job;
         let jm = job_manager.clone();
         let name = table_name.clone();
-
-        let job_dir = jm.job_state_directory(&table_name);
-        if let Err(e) =
-            materialize_kafka_source_checkpoints_from_catalog(&job_dir, &kafka_source_checkpoints)
-        {
-            warn!(
-                table = %table_name,
-                error = %e,
-                "Failed to materialize Kafka checkpoints from catalog before job restore"
-            );
-        }
 
         let custom_interval = if interval_ms > 0 {
             Some(interval_ms)
@@ -786,7 +695,13 @@ pub fn restore_streaming_jobs_from_store() {
             None
         };
 
-        match rt.block_on(jm.submit_job(name.clone(), program, custom_interval, recovery_epoch)) {
+        match rt.block_on(jm.submit_job(
+            name.clone(),
+            program,
+            custom_interval,
+            recovery_epoch,
+            source_checkpoints,
+        )) {
             Ok(job_id) => {
                 info!(
                     table = %table_name, job_id = %job_id,
@@ -807,36 +722,6 @@ pub fn restore_streaming_jobs_from_store() {
         total = total,
         "Streaming job restore complete"
     );
-}
-
-pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow::Result<()> {
-    if !config.stream_catalog.persist {
-        return CatalogManager::init_global_in_memory()
-            .context("Stream catalog (CatalogManager) in-memory init failed");
-    }
-
-    let path = config
-        .stream_catalog
-        .db_path
-        .as_ref()
-        .map(|p| crate::config::resolve_path(p))
-        .unwrap_or_else(|| crate::config::get_data_dir().join("stream_catalog"));
-
-    std::fs::create_dir_all(&path).with_context(|| {
-        format!(
-            "Failed to create stream catalog directory {}",
-            path.display()
-        )
-    })?;
-
-    let store = std::sync::Arc::new(super::RocksDbMetaStore::open(&path).with_context(|| {
-        format!(
-            "Failed to open stream catalog RocksDB at {}",
-            path.display()
-        )
-    })?);
-
-    CatalogManager::init_global(store).context("Stream catalog (CatalogManager) init failed")
 }
 
 #[allow(clippy::unwrap_or_default)]

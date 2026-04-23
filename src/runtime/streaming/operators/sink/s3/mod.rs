@@ -141,7 +141,7 @@ impl S3SinkOperator {
         Ok(cursor.into_inner())
     }
 
-    async fn flush_epoch(&mut self, epoch: u32, subtask_idx: usize, bytes: Vec<u8>) -> Result<()> {
+    async fn flush_epoch(&mut self, epoch: u64, subtask_idx: usize, bytes: Vec<u8>) -> Result<()> {
         if self.pending.is_empty() {
             return Ok(());
         }

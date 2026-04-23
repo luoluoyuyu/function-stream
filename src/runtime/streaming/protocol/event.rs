@@ -27,8 +27,8 @@ pub enum Watermark {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
 pub struct CheckpointBarrier {
-    pub epoch: u32,
-    pub min_epoch: u32,
+    pub epoch: u64,
+    pub min_epoch: u64,
     pub timestamp: SystemTime,
     pub then_stop: bool,
 }

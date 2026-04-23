@@ -336,7 +336,7 @@ impl Operator for KafkaSinkOperator {
         Ok(())
     }
 
-    async fn commit_checkpoint(&mut self, epoch: u32, _ctx: &mut TaskContext) -> Result<()> {
+    async fn commit_checkpoint(&mut self, epoch: u64, _ctx: &mut TaskContext) -> Result<()> {
         if matches!(self.consistency_mode, ConsistencyMode::AtLeastOnce) {
             return Ok(());
         }
@@ -380,7 +380,7 @@ impl Operator for KafkaSinkOperator {
         Ok(())
     }
 
-    async fn abort_checkpoint(&mut self, epoch: u32, _ctx: &mut TaskContext) -> Result<()> {
+    async fn abort_checkpoint(&mut self, epoch: u64, _ctx: &mut TaskContext) -> Result<()> {
         if matches!(self.consistency_mode, ConsistencyMode::AtLeastOnce) {
             return Ok(());
         }

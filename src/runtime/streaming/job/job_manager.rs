@@ -24,9 +24,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{error, info, warn};
 
 use protocol::function_stream_graph::{ChainedOperator, FsProgram};
-use protocol::storage::{
-    KafkaSourceSubtaskCheckpoint, SourceCheckpointPayload, source_checkpoint_payload,
-};
+use protocol::storage::{SourceCheckpointInfo, source_checkpoint_info};
 
 use crate::config::{
     DEFAULT_CHECKPOINT_INTERVAL_MS, DEFAULT_OPERATOR_STATE_STORE_MEMORY_BYTES,
@@ -157,7 +155,6 @@ struct CheckpointCoordinatorConfig {
     expected_pipeline_ids: HashSet<u32>,
     interval_ms: u64,
     start_epoch: u64,
-    job_state_dir: PathBuf,
     timeout: Duration,
 }
 
@@ -168,25 +165,6 @@ impl PipelineRunner {
             PipelineRunner::Standard(pipeline) => pipeline.run().await,
         }
     }
-}
-
-fn decode_kafka_checkpoints_from_source_payloads(
-    payloads: Vec<SourceCheckpointPayload>,
-    epoch: u64,
-) -> Vec<KafkaSourceSubtaskCheckpoint> {
-    let mut out = Vec::new();
-    for p in payloads {
-        match p.checkpoint {
-            Some(source_checkpoint_payload::Checkpoint::Kafka(mut cp)) => {
-                if cp.checkpoint_epoch != epoch {
-                    cp.checkpoint_epoch = epoch;
-                }
-                out.push(cp);
-            }
-            None => warn!("Skip empty source checkpoint payload"),
-        }
-    }
-    out
 }
 
 impl JobManager {
@@ -255,7 +233,7 @@ impl JobManager {
         self.state_config.pipeline_parallelism
     }
 
-    /// Per-job state directory (Kafka offset snapshots, operator state roots, etc.).
+    /// Per-job state directory (source offset snapshots, operator state roots, etc.).
     #[inline]
     pub fn job_state_directory(&self, job_id: &str) -> PathBuf {
         self.state_base_dir.join(job_id)
@@ -267,6 +245,7 @@ impl JobManager {
         program: FsProgram,
         custom_checkpoint_interval_ms: Option<u64>,
         recovery_epoch: Option<u64>,
+        source_checkpoint_infos: Vec<SourceCheckpointInfo>,
     ) -> Result<String> {
         let mut edge_manager = EdgeManager::build(&program.nodes, &program.edges);
         let mut pipelines = HashMap::with_capacity(program.nodes.len());
@@ -295,6 +274,7 @@ impl JobManager {
                     &job_state_dir,
                     job_master_tx.clone(),
                     safe_epoch,
+                    &source_checkpoint_infos,
                 )
                 .with_context(|| {
                     format!(
@@ -322,7 +302,6 @@ impl JobManager {
             expected_pipeline_ids,
             interval_ms,
             start_epoch: safe_epoch + 1,
-            job_state_dir: job_state_dir.clone(),
             timeout: Duration::from_millis(interval_ms.max(1) * 3),
         });
 
@@ -530,6 +509,7 @@ impl JobManager {
         job_state_dir: &Path,
         job_master_tx: mpsc::Sender<JobMasterEvent>,
         recovery_epoch: u64,
+        source_checkpoint_infos: &[SourceCheckpointInfo],
     ) -> Result<(PhysicalPipeline, bool)> {
         let (raw_inboxes, raw_outboxes) =
             edge_manager.take_endpoints(pipeline_id).with_context(|| {
@@ -610,7 +590,20 @@ impl JobManager {
             Some(job_master_tx.clone()),
         );
 
-        let runner = if let Some(source) = chain.source {
+        let runner = if let Some(mut source) = chain.source {
+            // Filter checkpoint records for this pipeline and inject into the source operator
+            // so it can restore partition offsets in on_start without touching TaskContext.
+            let pipeline_checkpoint_infos: Vec<SourceCheckpointInfo> = source_checkpoint_infos
+                .iter()
+                .filter(|info| match &info.info {
+                    Some(source_checkpoint_info::Info::Kafka(cp)) => cp.pipeline_id == pipeline_id,
+                    None => false,
+                })
+                .cloned()
+                .collect();
+            if !pipeline_checkpoint_infos.is_empty() {
+                source.set_recovery_checkpoint(pipeline_checkpoint_infos);
+            }
             let chain_head = ChainBuilder::build(chain.operators);
             PipelineRunner::Source(SourceDriver::new(source, chain_head, ctx, control_rx))
         } else {
@@ -733,7 +726,6 @@ impl JobManager {
                 expected_pipeline_ids,
                 interval_ms,
                 start_epoch,
-                job_state_dir,
                 timeout,
             } = cfg;
             if interval_ms == 0 {
@@ -749,7 +741,7 @@ impl JobManager {
                 epoch: u64,
                 missing_acks: HashSet<u32>,
                 start_time: Instant,
-                source_reports: Vec<SourceCheckpointPayload>,
+                source_infos: Vec<SourceCheckpointInfo>,
             }
             let mut active_checkpoint: Option<PendingCheckpoint> = None;
 
@@ -768,15 +760,15 @@ impl JobManager {
                             JobMasterEvent::CheckpointAck {
                                 pipeline_id,
                                 epoch,
-                                source_payloads,
+                                source_infos,
                             } => {
                                 if let Some(pending) = &mut active_checkpoint {
                                     if pending.epoch != epoch {
                                         continue;
                                     }
                                     pending.missing_acks.remove(&pipeline_id);
-                                    if !source_payloads.is_empty() {
-                                        pending.source_reports.extend(source_payloads);
+                                    if !source_infos.is_empty() {
+                                        pending.source_infos.extend(source_infos);
                                     }
 
                                     if pending.missing_acks.is_empty() {
@@ -786,16 +778,13 @@ impl JobManager {
                                         );
 
                                         let completed = active_checkpoint.take().expect("active checkpoint exists");
-                                        let kf = decode_kafka_checkpoints_from_source_payloads(completed.source_reports, epoch);
-                                        let epoch_u32 = u32::try_from(epoch).unwrap_or(u32::MAX);
 
                                         let mut catalog_ok = true;
                                         if let Some(catalog) = CatalogManager::try_global() {
                                             if let Err(e) = catalog.commit_job_checkpoint(
                                                 &job_id,
                                                 epoch,
-                                                &job_state_dir,
-                                                kf,
+                                                completed.source_infos,
                                             ) {
                                                 catalog_ok = false;
                                                 error!(
@@ -812,9 +801,9 @@ impl JobManager {
                                         }
 
                                         let phase2 = if catalog_ok {
-                                            ControlCommand::Commit { epoch: epoch_u32 }
+                                            ControlCommand::Commit { epoch }
                                         } else {
-                                            ControlCommand::AbortCheckpoint { epoch: epoch_u32 }
+                                            ControlCommand::AbortCheckpoint { epoch }
                                         };
                                         broadcast_cmd(phase2);
                                     }
@@ -828,9 +817,7 @@ impl JobManager {
                                         job_id = %job_id, epoch = epoch, pipeline_id = pipeline_id,
                                         reason = %reason, "Checkpoint FAILED!"
                                     );
-                                    broadcast_cmd(ControlCommand::AbortCheckpoint {
-                                        epoch: u32::try_from(epoch).unwrap_or(u32::MAX),
-                                    });
+                                    broadcast_cmd(ControlCommand::AbortCheckpoint { epoch });
                                     active_checkpoint = None;
                                 }
                             }
@@ -846,7 +833,7 @@ impl JobManager {
                                     "Checkpoint timed out; aborting active epoch"
                                 );
                                 broadcast_cmd(ControlCommand::AbortCheckpoint {
-                                    epoch: u32::try_from(pending.epoch).unwrap_or(u32::MAX),
+                                    epoch: pending.epoch,
                                 });
                             } else {
                                 continue;
@@ -862,7 +849,7 @@ impl JobManager {
                         info!(job_id = %job_id, epoch = current_epoch, "Triggering global Checkpoint Barrier.");
 
                         let barrier = CheckpointBarrier {
-                            epoch: current_epoch as u32,
+                            epoch: current_epoch,
                             min_epoch: 0,
                             timestamp: std::time::SystemTime::now(),
                             then_stop: false,
@@ -871,7 +858,7 @@ impl JobManager {
                             epoch: current_epoch,
                             missing_acks: expected_pipeline_ids.clone(),
                             start_time: Instant::now(),
-                            source_reports: Vec::new(),
+                            source_infos: Vec::new(),
                         });
 
                         for tx in &source_control_txs {

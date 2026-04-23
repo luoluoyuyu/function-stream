@@ -136,7 +136,7 @@ impl DeltaSinkOperator {
         })
     }
 
-    async fn flush_epoch(&mut self, epoch: u32, subtask_idx: usize) -> Result<()> {
+    async fn flush_epoch(&mut self, epoch: u64, subtask_idx: usize) -> Result<()> {
         if self.pending.is_empty() {
             return Ok(());
         }
@@ -265,7 +265,7 @@ impl Operator for DeltaSinkOperator {
     async fn on_close(&mut self, ctx: &mut TaskContext) -> Result<Vec<StreamOutput>> {
         if !self.pending.is_empty() {
             warn!(table = %self.table_name, "flushing remaining delta sink batches on close");
-            self.flush_epoch(u32::MAX, ctx.subtask_index as usize)
+            self.flush_epoch(u64::MAX, ctx.subtask_index as usize)
                 .await?;
         }
         Ok(vec![])

@@ -100,7 +100,7 @@ impl FilesystemSinkOperator {
         }
     }
 
-    async fn flush_file_epoch(&mut self, epoch: u32, subtask_idx: usize) -> Result<()> {
+    async fn flush_file_epoch(&mut self, epoch: u64, subtask_idx: usize) -> Result<()> {
         if self.pending.is_empty() {
             return Ok(());
         }
@@ -213,7 +213,7 @@ impl Operator for FilesystemSinkOperator {
                 table = %self.table_name,
                 "flushing remaining filesystem sink batches on close"
             );
-            self.flush_file_epoch(u32::MAX, ctx.subtask_index as usize)
+            self.flush_file_epoch(u64::MAX, ctx.subtask_index as usize)
                 .await?;
         }
         Ok(vec![])

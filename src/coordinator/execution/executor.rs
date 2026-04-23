@@ -368,6 +368,7 @@ impl PlanVisitor for Executor {
                     fs_program,
                     custom_interval,
                     None,
+                    vec![],
                 ))
             })
             .map_err(|e| ExecuteError::Internal(format!("Failed to submit streaming job: {e}")))?;

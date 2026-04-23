@@ -11,15 +11,15 @@
 // limitations under the License.
 
 use super::event::CheckpointBarrier;
-use protocol::storage::SourceCheckpointPayload;
+use protocol::storage::SourceCheckpointInfo;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointBarrierWire {
-    pub epoch: u32,
-    pub min_epoch: u32,
+    pub epoch: u64,
+    pub min_epoch: u64,
     pub timestamp_secs: u64,
     pub timestamp_subsec_nanos: u32,
     pub then_stop: bool,
@@ -62,11 +62,11 @@ pub enum ControlCommand {
     DropState,
     /// Phase 2 of checkpoint 2PC: metadata durable; transactional Kafka sink should `commit_transaction`.
     Commit {
-        epoch: u32,
+        epoch: u64,
     },
     /// Roll back pre-committed transactional Kafka writes when checkpoint metadata commit failed or barrier declined.
     AbortCheckpoint {
-        epoch: u32,
+        epoch: u64,
     },
     UpdateConfig {
         config_json: String,
@@ -99,8 +99,8 @@ pub enum JobMasterEvent {
     CheckpointAck {
         pipeline_id: u32,
         epoch: u64,
-        /// Source protocol checkpoint payloads (enum-style oneof envelope).
-        source_payloads: Vec<SourceCheckpointPayload>,
+        /// Per-subtask checkpoint records produced directly by the source during snapshot.
+        source_infos: Vec<SourceCheckpointInfo>,
     },
     CheckpointDecline {
         pipeline_id: u32,
