@@ -49,9 +49,39 @@ impl OperatorConstructor for LanceDbSinkDispatcher {
         }
 
         let dataset_uri = resolve_lance_uri(&props)?;
-        let sink = LanceDbSinkOperator::new(op.name, dataset_uri);
+        let storage_options = build_lance_storage_options(&props);
+        let sink = LanceDbSinkOperator::new(op.name, dataset_uri, storage_options);
         Ok(ConstructedOperator::Operator(Box::new(sink)))
     }
+}
+
+/// Build storage options in the `object_store` key format that lance-io understands.
+///
+/// Maps our internal `s3.*` option keys to the `aws_*` keys that the underlying
+/// `object_store` crate recognises via `AmazonS3ConfigKey::from_str`.
+fn build_lance_storage_options(props: &HashMap<String, String>) -> HashMap<String, String> {
+    let mut opts = HashMap::new();
+    if let Some(v) = props.get(opt::S3_ACCESS_KEY_ID) {
+        opts.insert("aws_access_key_id".to_string(), v.clone());
+    }
+    if let Some(v) = props.get(opt::S3_SECRET_ACCESS_KEY) {
+        opts.insert("aws_secret_access_key".to_string(), v.clone());
+    }
+    if let Some(v) = props.get(opt::S3_REGION) {
+        opts.insert("aws_default_region".to_string(), v.clone());
+    }
+    if let Some(v) = props.get(opt::S3_ENDPOINT) {
+        opts.insert("aws_endpoint".to_string(), v.clone());
+        // Allow HTTP endpoints (e.g. local MinIO) unless the user has provided
+        // an explicit https:// endpoint.
+        if !v.starts_with("https://") {
+            opts.insert("allow_http".to_string(), "true".to_string());
+        }
+    }
+    if let Some(v) = props.get(opt::S3_SESSION_TOKEN) {
+        opts.insert("aws_session_token".to_string(), v.clone());
+    }
+    opts
 }
 
 fn resolve_lance_uri(props: &HashMap<String, String>) -> Result<String> {

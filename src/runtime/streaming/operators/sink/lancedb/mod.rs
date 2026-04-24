@@ -10,7 +10,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use arrow_array::RecordBatch;
@@ -18,6 +20,7 @@ use arrow_array_lance::RecordBatchIterator as LanceBatchIterator;
 use async_trait::async_trait;
 use lance::Dataset;
 use lance::dataset::{WriteMode, WriteParams};
+use lance::io::{ObjectStoreParams, StorageOptionsAccessor};
 use tracing::{info, warn};
 
 use crate::runtime::streaming::StreamOutput;
@@ -29,15 +32,21 @@ use crate::sql::common::{CheckpointBarrier, Watermark};
 pub struct LanceDbSinkOperator {
     table_name: String,
     dataset_uri: String,
+    storage_options: HashMap<String, String>,
     pending: Vec<RecordBatch>,
     initialized: bool,
 }
 
 impl LanceDbSinkOperator {
-    pub fn new(table_name: String, dataset_uri: String) -> Self {
+    pub fn new(
+        table_name: String,
+        dataset_uri: String,
+        storage_options: HashMap<String, String>,
+    ) -> Self {
         Self {
             table_name,
             dataset_uri,
+            storage_options,
             pending: Vec::new(),
             initialized: false,
         }
@@ -84,12 +93,25 @@ impl LanceDbSinkOperator {
             .map(|b| b.schema())
             .context("lanceDB sink produced no converted batches")?;
         let reader = LanceBatchIterator::new(lance_batches.into_iter().map(Ok), schema);
+
+        let store_params = if self.storage_options.is_empty() {
+            None
+        } else {
+            Some(ObjectStoreParams {
+                storage_options_accessor: Some(Arc::new(
+                    StorageOptionsAccessor::with_static_options(self.storage_options.clone()),
+                )),
+                ..Default::default()
+            })
+        };
+
         let params = WriteParams {
             mode: if self.initialized {
                 WriteMode::Append
             } else {
                 WriteMode::Create
             },
+            store_params,
             ..Default::default()
         };
         Dataset::write(reader, &self.dataset_uri, Some(params))
