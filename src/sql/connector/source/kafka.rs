@@ -163,6 +163,7 @@ impl SourceProvider for KafkaSourceConnector {
         client_configs.remove(opt::CHECKPOINT_INTERVAL_MS);
         client_configs.remove(opt::PIPELINE_PARALLELISM);
         client_configs.remove(opt::KEY_BY_PARALLELISM);
+        client_configs.remove(opt::FORMAT);
 
         Ok(ConnectorConfig::KafkaSource(KafkaSourceConfig {
             topic,

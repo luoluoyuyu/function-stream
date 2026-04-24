@@ -140,6 +140,7 @@ impl SinkProvider for KafkaSinkConnector {
         client_configs.remove(opt::CHECKPOINT_INTERVAL_MS);
         client_configs.remove(opt::PIPELINE_PARALLELISM);
         client_configs.remove(opt::KEY_BY_PARALLELISM);
+        client_configs.remove(opt::FORMAT);
 
         Ok(ConnectorConfig::KafkaSink(KafkaSinkConfig {
             topic,

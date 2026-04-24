@@ -92,8 +92,18 @@ class FunctionTracker:
         self._client = client
         self._registered: Set[str] = set()
 
+    def __contains__(self, name: str) -> bool:
+        return name in self._registered
+
     def append(self, name: str) -> None:
         self._registered.add(name)
+
+    def extend(self, names) -> None:
+        for name in names:
+            self._registered.add(name)
+
+    def remove(self, name: str) -> None:
+        self._registered.discard(name)
 
     def register(self, name: str) -> None:
         self._registered.add(name)
