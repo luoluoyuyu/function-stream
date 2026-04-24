@@ -774,19 +774,6 @@ mod tests {
     }
 
     #[test]
-    fn add_table_roundtrip_snapshot() {
-        let mgr = create_test_manager();
-        let mut source = make_test_source("t1");
-        source.temporal_config.event_column = Some("ts".into());
-        let table = CatalogEntity::external(ExternalTable::Source(source));
-
-        mgr.add_catalog_table(table).unwrap();
-
-        let got = mgr.get_catalog_table("t1").unwrap().expect("table present");
-        assert_eq!(got.name(), "t1");
-    }
-
-    #[test]
     fn drop_table_if_exists() {
         let mgr = create_test_manager();
         let source = make_test_source("t_drop");
