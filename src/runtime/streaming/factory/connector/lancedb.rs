@@ -61,6 +61,11 @@ fn resolve_lance_uri(props: &HashMap<String, String>) -> Result<String> {
         .or_else(|| props.get(opt::SINK_PATH).cloned())
         .unwrap_or_else(|| ".".to_string());
 
+    // If path already contains a fully-qualified URI scheme, use it as-is.
+    if path.contains("://") {
+        return Ok(path);
+    }
+
     if let Some(bucket) = props.get(opt::S3_BUCKET) {
         let trimmed = path.trim_matches('/');
         if trimmed.is_empty() {

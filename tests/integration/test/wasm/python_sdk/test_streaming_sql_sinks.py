@@ -120,9 +120,16 @@ def _sample_rows() -> List[Dict[str, Any]]:
 
 def _parse_timestamp(val: Any) -> float:
     if isinstance(val, dt.datetime):
+        # Parquet/Iceberg may return naive datetimes that are in UTC without a tz marker;
+        # treat them as UTC to avoid local-timezone skew (e.g. UTC+8 adds 28800 s).
+        if val.tzinfo is None:
+            val = val.replace(tzinfo=dt.timezone.utc)
         return val.timestamp()
     if isinstance(val, str):
-        return dt_parser.isoparse(val).timestamp()
+        parsed = dt_parser.isoparse(val)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.timestamp()
     raise TypeError(f"Unknown timestamp type: {type(val)}")
 
 
