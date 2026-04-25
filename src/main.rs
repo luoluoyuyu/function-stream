@@ -15,6 +15,7 @@
 mod config;
 mod coordinator;
 mod logging;
+mod metrics;
 mod runtime;
 mod server;
 mod sql;

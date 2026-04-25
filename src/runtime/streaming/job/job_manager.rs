@@ -43,7 +43,10 @@ use crate::runtime::streaming::job::models::{
 use crate::runtime::streaming::network::endpoint::{BoxedEventStream, PhysicalSender};
 use crate::runtime::streaming::protocol::control::{ControlCommand, JobMasterEvent, StopMode};
 use crate::runtime::streaming::protocol::event::CheckpointBarrier;
-use crate::runtime::streaming::state::{IoManager, IoPool, NoopMetricsCollector};
+#[allow(unused_imports)]
+use crate::runtime::streaming::state::{
+    IoManager, IoPool, NoopMetricsCollector, StateMetricsCollector,
+};
 use crate::sql::logical_node::logical::OperatorName;
 use crate::storage::stream_catalog::CatalogManager;
 
@@ -185,7 +188,17 @@ impl JobManager {
             .enable_all()
             .build()
             .context("Failed to initialize data runtime")?;
-        let metrics = Arc::new(NoopMetricsCollector);
+        let metrics: Arc<dyn StateMetricsCollector> = {
+            use crate::metrics::stats::state_metrics_adapter::StateMetricsBridge;
+            use crate::runtime::streaming::state::NoopMetricsCollector;
+            // Use StateMetricsBridge when the global registry is available;
+            // fall back to the no-op collector if metrics were not initialised
+            // (e.g. in unit-test contexts).
+            match StateMetricsBridge::try_new("global") {
+                Some(bridge) => Arc::new(bridge),
+                None => Arc::new(NoopMetricsCollector),
+            }
+        };
         let (io_pool, io_manager_client) = IoPool::try_new(
             state_config.max_background_spills,
             state_config.max_background_compactions,

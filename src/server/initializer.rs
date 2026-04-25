@@ -100,6 +100,7 @@ impl ComponentRegistry {
 pub fn build_core_registry() -> ComponentRegistry {
     let builder = {
         let b = ComponentRegistryBuilder::new()
+            .register("Metrics", crate::metrics::initialize_metrics)
             .register("StreamingSqlPlanning", initialize_streaming_sql_planning)
             .register("WasmCache", initialize_wasm_cache)
             .register("TaskManager", initialize_task_manager)

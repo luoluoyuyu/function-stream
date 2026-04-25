@@ -15,6 +15,7 @@ use serde_yaml::Value;
 use uuid::Uuid;
 
 use crate::config::log_config::LogConfig;
+use crate::config::metrics_config::MetricsConfig;
 use crate::config::python_config::PythonConfig;
 use crate::config::service_config::ServiceConfig;
 use crate::config::streaming_job::{ResolvedStreamingJobConfig, StreamingJobConfig};
@@ -52,6 +53,8 @@ impl StreamingConfig {
 pub struct GlobalConfig {
     pub service: ServiceConfig,
     pub logging: LogConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
     #[serde(default)]
     pub python: PythonConfig,
     #[serde(default)]

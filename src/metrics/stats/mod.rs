@@ -10,15 +10,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Library crate for function-stream
-
-#![allow(dead_code)]
-
-pub mod config;
-pub mod coordinator;
-pub mod logging;
-pub mod metrics;
-pub mod runtime;
-pub mod server;
-pub mod sql;
-pub mod storage;
+pub mod state_metrics_adapter;

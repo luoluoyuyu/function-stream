@@ -13,6 +13,7 @@
 pub mod global_config;
 pub mod loader;
 pub mod log_config;
+pub mod metrics_config;
 pub mod paths;
 pub mod python_config;
 pub mod service_config;
