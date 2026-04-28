@@ -79,6 +79,12 @@ jobs:
       - name: Build & Package (Lite)
         run: make dist-lite
 
+      - name: Install cargo-sweep
+        run: cargo install cargo-sweep --locked
+
+      - name: Prune stale Cargo artifacts
+        run: cargo sweep -t 7
+
       - name: Verify Artifacts
         run: |
           ls -lh dist/*.tar.gz dist/*.zip

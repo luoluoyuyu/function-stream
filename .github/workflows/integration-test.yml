@@ -68,6 +68,12 @@ jobs:
       - name: Run Integration Tests
         run: make integration-test
 
+      - name: Install cargo-sweep
+        run: cargo install cargo-sweep --locked
+
+      - name: Prune stale Cargo artifacts
+        run: cargo sweep -t 7
+
       - name: Upload Test Logs
         if: failure()
         uses: actions/upload-artifact@v4
