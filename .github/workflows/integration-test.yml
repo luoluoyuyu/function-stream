@@ -19,6 +19,10 @@ on:
     branches: ["main", "master"]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -43,6 +47,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Install System Dependencies
         run: |
@@ -60,13 +66,23 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Release Binary
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         run: make env && make dist
 
       - name: Pre-pull Kafka Image
         run: docker pull apache/kafka:3.7.0
 
       - name: Run Integration Tests
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         run: make integration-test
+
+      - name: Show sccache Stats
+        if: always()
+        run: sccache --show-stats || true
 
       - name: Upload Test Logs
         if: failure()
