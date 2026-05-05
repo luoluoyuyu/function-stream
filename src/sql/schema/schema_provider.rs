@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use datafusion::arrow::datatypes::{self as datatypes, DataType, Field, Schema};
-use datafusion::common::{DataFusionError, Result};
+use datafusion::common::{DataFusionError, Result as DataFusionResult};
 use datafusion::datasource::{DefaultTableSource, TableProvider, TableType};
 use datafusion::execution::{FunctionRegistry, SessionStateDefaults};
 use datafusion::logical_expr::expr_rewriter::FunctionRewrite;
@@ -23,11 +23,13 @@ use datafusion::logical_expr::{AggregateUDF, Expr, ScalarUDF, TableSource, Windo
 use datafusion::optimizer::Analyzer;
 use datafusion::sql::TableReference;
 use datafusion::sql::planner::ContextProvider;
+use thiserror::Error;
+use tracing::{debug, error, info};
 use unicase::UniCase;
 
 use crate::sql::common::constants::{planning_placeholder_udf, window_fn};
 use crate::sql::logical_node::logical::{DylibUdfConfig, LogicalProgram};
-use crate::sql::schema::table::Table as CatalogTable;
+use crate::sql::schema::table::CatalogEntity;
 use crate::sql::schema::utils::window_arrow_struct;
 use crate::sql::types::{PlanningOptions, PlanningPlaceholderUdf, SqlConfig};
 
@@ -38,6 +40,25 @@ fn object_name(s: impl Into<String>) -> ObjectName {
     UniCase::new(s.into())
 }
 
+#[derive(Error, Debug)]
+pub enum PlanningError {
+    #[error("Catalog table not found: {0}")]
+    TableNotFound(String),
+    #[error("Planning init failed: {0}")]
+    InitError(String),
+    #[error("Engine error: {0}")]
+    Engine(#[from] DataFusionError),
+}
+
+impl From<PlanningError> for DataFusionError {
+    fn from(err: PlanningError) -> Self {
+        match err {
+            PlanningError::Engine(inner) => inner,
+            other => DataFusionError::Plan(other.to_string()),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum StreamTable {
     Source {
@@ -46,7 +67,6 @@ pub enum StreamTable {
         schema: Arc<Schema>,
         event_time_field: Option<String>,
         watermark_field: Option<String>,
-        /// Persisted `WITH` options for `SHOW CREATE TABLE`.
         with_options: BTreeMap<String, String>,
     },
     Sink {
@@ -98,7 +118,7 @@ impl TableProvider for LogicalBatchInput {
         _projection: Option<&Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
-    ) -> Result<Arc<dyn datafusion::physical_plan::ExecutionPlan>> {
+    ) -> DataFusionResult<Arc<dyn datafusion::physical_plan::ExecutionPlan>> {
         Ok(Arc::new(crate::sql::physical::FsMemExec::new(
             self.table_name.clone(),
             Arc::clone(&self.schema),
@@ -117,7 +137,7 @@ pub struct FunctionCatalog {
 #[derive(Clone, Default)]
 pub struct TableCatalog {
     pub streams: HashMap<ObjectName, Arc<StreamTable>>,
-    pub catalogs: HashMap<ObjectName, Arc<CatalogTable>>,
+    pub catalogs: HashMap<ObjectName, Arc<CatalogEntity>>,
     pub source_defs: HashMap<String, String>,
 }
 
@@ -132,7 +152,6 @@ pub struct StreamPlanningContext {
     pub sql_config: SqlConfig,
 }
 
-/// Back-compat name for [`StreamPlanningContext`].
 pub type StreamSchemaProvider = StreamPlanningContext;
 
 impl StreamPlanningContext {
@@ -150,20 +169,25 @@ impl StreamPlanningContext {
         self.sql_config.key_by_parallelism
     }
 
-    /// Same registration order as the historical `StreamSchemaProvider::new` (placeholders, then DataFusion defaults).
+    pub fn try_new(config: SqlConfig) -> Result<Self, PlanningError> {
+        info!("Initializing StreamPlanningContext");
+        let mut builder = StreamPlanningContextBuilder::default();
+        builder
+            .with_streaming_extensions()?
+            .with_default_functions()?;
+        let mut ctx = builder.build();
+        ctx.sql_config = config;
+        Ok(ctx)
+    }
+
     pub fn new() -> Self {
-        let mut ctx = Self::builder()
-            .with_streaming_extensions()
-            .expect("streaming extensions")
-            .with_default_functions()
-            .expect("default functions")
-            .build();
-        ctx.sql_config = crate::sql::planning_runtime::sql_planning_snapshot();
-        ctx
+        let config = crate::sql::planning_runtime::sql_planning_snapshot();
+        Self::try_new(config).expect("StreamPlanningContext bootstrap")
     }
 
     pub fn register_stream_table(&mut self, table: StreamTable) {
         let key = object_name(table.name().to_string());
+        debug!(table = %key, "register stream table");
         self.tables.streams.insert(key, Arc::new(table));
     }
 
@@ -174,12 +198,13 @@ impl StreamPlanningContext {
             .cloned()
     }
 
-    pub fn register_catalog_table(&mut self, table: CatalogTable) {
+    pub fn register_catalog_table(&mut self, table: CatalogEntity) {
         let key = object_name(table.name().to_string());
+        debug!(table = %key, "register catalog table");
         self.tables.catalogs.insert(key, Arc::new(table));
     }
 
-    pub fn get_catalog_table(&self, table_name: impl AsRef<str>) -> Option<&CatalogTable> {
+    pub fn get_catalog_table(&self, table_name: impl AsRef<str>) -> Option<&CatalogEntity> {
         self.tables
             .catalogs
             .get(&object_name(table_name.as_ref().to_string()))
@@ -189,7 +214,7 @@ impl StreamPlanningContext {
     pub fn get_catalog_table_mut(
         &mut self,
         table_name: impl AsRef<str>,
-    ) -> Option<&mut CatalogTable> {
+    ) -> Option<&mut CatalogEntity> {
         self.tables
             .catalogs
             .get_mut(&object_name(table_name.as_ref().to_string()))
@@ -221,8 +246,7 @@ impl StreamPlanningContext {
         self.register_stream_table(table);
     }
 
-    /// Alias for [`Self::register_catalog_table`].
-    pub fn insert_catalog_table(&mut self, table: CatalogTable) {
+    pub fn insert_catalog_table(&mut self, table: CatalogEntity) {
         self.register_catalog_table(table);
     }
 
@@ -254,12 +278,15 @@ impl StreamPlanningContext {
 }
 
 impl ContextProvider for StreamPlanningContext {
-    fn get_table_source(&self, name: TableReference) -> Result<Arc<dyn TableSource>> {
-        let table = self
-            .get_stream_table(name.table())
-            .ok_or_else(|| DataFusionError::Plan(format!("Table {} not found", name)))?;
-
-        Ok(Self::create_table_source(name.to_string(), table.schema()))
+    fn get_table_source(&self, name: TableReference) -> DataFusionResult<Arc<dyn TableSource>> {
+        let name_str = name.table();
+        match self.get_stream_table(name_str) {
+            Some(table) => Ok(Self::create_table_source(name.to_string(), table.schema())),
+            None => {
+                error!(table = %name_str, "stream table lookup failed");
+                Err(DataFusionError::Plan(format!("Table {} not found", name)))
+            }
+        }
     }
 
     fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>> {
@@ -304,7 +331,7 @@ impl FunctionRegistry for StreamPlanningContext {
         self.functions.scalars.keys().cloned().collect()
     }
 
-    fn udf(&self, name: &str) -> Result<Arc<ScalarUDF>> {
+    fn udf(&self, name: &str) -> DataFusionResult<Arc<ScalarUDF>> {
         self.functions
             .scalars
             .get(name)
@@ -312,7 +339,7 @@ impl FunctionRegistry for StreamPlanningContext {
             .ok_or_else(|| DataFusionError::Plan(format!("No UDF with name {name}")))
     }
 
-    fn udaf(&self, name: &str) -> Result<Arc<AggregateUDF>> {
+    fn udaf(&self, name: &str) -> DataFusionResult<Arc<AggregateUDF>> {
         self.functions
             .aggregates
             .get(name)
@@ -320,7 +347,7 @@ impl FunctionRegistry for StreamPlanningContext {
             .ok_or_else(|| DataFusionError::Plan(format!("No UDAF with name {name}")))
     }
 
-    fn udwf(&self, name: &str) -> Result<Arc<WindowUDF>> {
+    fn udwf(&self, name: &str) -> DataFusionResult<Arc<WindowUDF>> {
         self.functions
             .windows
             .get(name)
@@ -331,27 +358,33 @@ impl FunctionRegistry for StreamPlanningContext {
     fn register_function_rewrite(
         &mut self,
         rewrite: Arc<dyn FunctionRewrite + Send + Sync>,
-    ) -> Result<()> {
+    ) -> DataFusionResult<()> {
         self.analyzer.add_function_rewrite(rewrite);
         Ok(())
     }
 
-    fn register_udf(&mut self, udf: Arc<ScalarUDF>) -> Result<Option<Arc<ScalarUDF>>> {
+    fn register_udf(&mut self, udf: Arc<ScalarUDF>) -> DataFusionResult<Option<Arc<ScalarUDF>>> {
         Ok(self.functions.scalars.insert(udf.name().to_string(), udf))
     }
 
-    fn register_udaf(&mut self, udaf: Arc<AggregateUDF>) -> Result<Option<Arc<AggregateUDF>>> {
+    fn register_udaf(
+        &mut self,
+        udaf: Arc<AggregateUDF>,
+    ) -> DataFusionResult<Option<Arc<AggregateUDF>>> {
         Ok(self
             .functions
             .aggregates
             .insert(udaf.name().to_string(), udaf))
     }
 
-    fn register_udwf(&mut self, udwf: Arc<WindowUDF>) -> Result<Option<Arc<WindowUDF>>> {
+    fn register_udwf(&mut self, udwf: Arc<WindowUDF>) -> DataFusionResult<Option<Arc<WindowUDF>>> {
         Ok(self.functions.windows.insert(udwf.name().to_string(), udwf))
     }
 
-    fn register_expr_planner(&mut self, expr_planner: Arc<dyn ExprPlanner>) -> Result<()> {
+    fn register_expr_planner(
+        &mut self,
+        expr_planner: Arc<dyn ExprPlanner>,
+    ) -> DataFusionResult<()> {
         self.functions.planners.push(expr_planner);
         Ok(())
     }
@@ -371,7 +404,7 @@ impl StreamPlanningContextBuilder {
         Self::default()
     }
 
-    pub fn with_default_functions(mut self) -> Result<Self> {
+    pub fn with_default_functions(&mut self) -> Result<&mut Self, PlanningError> {
         for p in SessionStateDefaults::default_scalar_functions() {
             self.context.register_udf(p)?;
         }
@@ -387,7 +420,7 @@ impl StreamPlanningContextBuilder {
         Ok(self)
     }
 
-    pub fn with_streaming_extensions(mut self) -> Result<Self> {
+    pub fn with_streaming_extensions(&mut self) -> Result<&mut Self, PlanningError> {
         let extensions = vec![
             PlanningPlaceholderUdf::new_with_return(
                 window_fn::HOP,

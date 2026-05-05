@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow};
 use arrow_array::RecordBatch;
-use protocol::storage::SourceCheckpointPayload;
+use protocol::storage::SourceCheckpointInfo;
 use tokio::sync::mpsc;
 
 use crate::runtime::memory::{MemoryBlock, MemoryPool, get_array_memory_size};
@@ -78,7 +78,7 @@ pub struct TaskContext {
     /// Last globally-committed safe epoch for crash recovery.
     safe_epoch: u64,
 
-    /// When set, pipelines report checkpoint completion (and optional Kafka offsets) to the job coordinator.
+    /// When set, pipelines report checkpoint completion to the job coordinator.
     checkpoint_ack_tx: Option<mpsc::Sender<JobMasterEvent>>,
 }
 
@@ -128,17 +128,13 @@ impl TaskContext {
     }
 
     /// Notify the job checkpoint coordinator that this pipeline has finished the barrier for `epoch`.
-    pub async fn send_checkpoint_ack(
-        &self,
-        epoch: u64,
-        source_payloads: Vec<SourceCheckpointPayload>,
-    ) {
+    pub async fn send_checkpoint_ack(&self, epoch: u64, source_infos: Vec<SourceCheckpointInfo>) {
         if let Some(tx) = &self.checkpoint_ack_tx {
             let _ = tx
                 .send(JobMasterEvent::CheckpointAck {
                     pipeline_id: self.pipeline_id,
                     epoch,
-                    source_payloads,
+                    source_infos,
                 })
                 .await;
         }

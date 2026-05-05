@@ -58,9 +58,12 @@ message KafkaSourceSubtaskCheckpoint {
   repeated KafkaPartitionOffset partitions = 4;
 }
 
-// Generic source checkpoint payload envelope (enum-like via oneof).
-message SourceCheckpointPayload {
-  oneof checkpoint {
+// Aggregated, epoch-aligned per-source checkpoint info persisted by the coordinator
+// (one entry per source subtask). The envelope decouples the catalog/meta-store from
+// any specific source implementation so new source types can be added by registering a
+// new `CheckpointAggregator` in the runtime without touching storage schema layouts.
+message SourceCheckpointInfo {
+  oneof info {
     KafkaSourceSubtaskCheckpoint kafka = 1;
   }
 }
@@ -81,10 +84,10 @@ message StreamingTableDefinition {
   // Updated by JobManager after all operators ACK. Used for crash recovery.
   uint64 latest_checkpoint_epoch = 6;
 
-  // Kafka source per-subtask offsets at the same committed epoch as `latest_checkpoint_epoch`.
-  // Populated by the runtime coordinator from source checkpoint ACKs. Optional `.bin` files under
-  // the job state dir may exist only for local recovery materialization from this field.
-  repeated KafkaSourceSubtaskCheckpoint kafka_source_checkpoints = 7;
+  // Source-agnostic per-subtask checkpoint entries aligned with `latest_checkpoint_epoch`.
+  // Populated by the runtime CheckpointCoordinator via the configured aggregator registry;
+  // storage no longer knows the internal layout of any particular source type.
+  repeated SourceCheckpointInfo source_checkpoints = 7;
 }
 
 // =============================================================================

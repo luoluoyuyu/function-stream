@@ -17,10 +17,11 @@ mod manager;
 mod meta_store;
 mod rocksdb_meta_store;
 
+pub use super::initialize_stream_catalog;
+
 #[allow(unused_imports)]
 pub use manager::{
-    CatalogManager, StoredStreamingJob, initialize_stream_catalog,
-    materialize_kafka_source_checkpoints_from_catalog, restore_global_catalog_from_store,
+    CatalogManager, StoredStreamingJob, restore_global_catalog_from_store,
     restore_streaming_jobs_from_store,
 };
 pub use meta_store::{InMemoryMetaStore, MetaStore};

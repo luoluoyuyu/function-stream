@@ -70,7 +70,11 @@ message ConnectorOp {
   oneof config {
     KafkaSourceConfig kafka_source = 6;
     KafkaSinkConfig kafka_sink = 7;
-    GenericConnectorConfig generic = 8;
+    FilesystemSinkConfig filesystem_sink = 9;
+    DeltaSinkConfig delta_sink = 10;
+    IcebergSinkConfig iceberg_sink = 11;
+    S3SinkConfig s3_sink = 12;
+    LanceDbSinkConfig lancedb_sink = 13;
   }
 }
 
@@ -103,9 +107,55 @@ message KafkaSinkConfig {
   optional string value_subject = 9;
 }
 
-// Fallback for non-Kafka connectors that are not yet strongly typed.
-message GenericConnectorConfig {
-  map<string, string> properties = 1;
+message FilesystemSinkConfig {
+  string path = 1;
+  SinkFormatProto format = 2;
+  optional ParquetCompressionProto parquet_compression = 3;
+  map<string, string> extra_properties = 100;
+  map<string, string> runtime_properties = 101;
+}
+
+message DeltaSinkConfig {
+  string path = 1;
+  SinkFormatProto format = 2;
+  optional ParquetCompressionProto parquet_compression = 3;
+  map<string, string> extra_properties = 100;
+  map<string, string> runtime_properties = 101;
+}
+
+message IcebergSinkConfig {
+  string path = 1;
+  SinkFormatProto format = 2;
+  optional ParquetCompressionProto parquet_compression = 3;
+  map<string, string> extra_properties = 100;
+  map<string, string> runtime_properties = 101;
+}
+
+message S3SinkConfig {
+  string path = 1;
+  SinkFormatProto format = 2;
+  string bucket = 3;
+  string region = 4;
+  optional string endpoint = 5;
+  optional string access_key_id = 6;
+  optional string secret_access_key = 7;
+  optional string session_token = 8;
+  optional ParquetCompressionProto parquet_compression = 9;
+  map<string, string> extra_properties = 100;
+  map<string, string> runtime_properties = 101;
+}
+
+message LanceDbSinkConfig {
+  string path = 1;
+  SinkFormatProto format = 2;
+  optional string s3_bucket = 3;
+  optional string s3_region = 4;
+  optional string s3_endpoint = 5;
+  optional string s3_access_key_id = 6;
+  optional string s3_secret_access_key = 7;
+  optional string s3_session_token = 8;
+  map<string, string> extra_properties = 100;
+  map<string, string> runtime_properties = 101;
 }
 
 // ─────────────────────── Kafka Auth ───────────────────────
@@ -187,6 +237,26 @@ enum KafkaReadMode {
 enum KafkaSinkCommitMode {
   KAFKA_SINK_AT_LEAST_ONCE = 0;
   KAFKA_SINK_EXACTLY_ONCE = 1;
+}
+
+enum SinkFormatProto {
+  SINK_FORMAT_UNSPECIFIED = 0;
+  SINK_FORMAT_CSV = 1;
+  SINK_FORMAT_JSONL = 2;
+  SINK_FORMAT_AVRO = 3;
+  SINK_FORMAT_PARQUET = 4;
+  SINK_FORMAT_ORC = 5;
+  SINK_FORMAT_LANCE = 6;
+}
+
+enum ParquetCompressionProto {
+  PARQUET_COMPRESSION_UNSPECIFIED = 0;
+  PARQUET_COMPRESSION_UNCOMPRESSED = 1;
+  PARQUET_COMPRESSION_SNAPPY = 2;
+  PARQUET_COMPRESSION_GZIP = 3;
+  PARQUET_COMPRESSION_ZSTD = 4;
+  PARQUET_COMPRESSION_LZ4 = 5;
+  PARQUET_COMPRESSION_LZ4_RAW = 6;
 }
 
 message ValuePlanOperator {

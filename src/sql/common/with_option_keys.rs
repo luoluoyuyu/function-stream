@@ -16,6 +16,8 @@ pub const FORMAT: &str = "format";
 pub const DEFAULT_FORMAT_VALUE: &str = "json";
 pub const BAD_DATA: &str = "bad_data";
 pub const PARTITION_BY: &str = "partition_by";
+pub const PATH: &str = "path";
+pub const SINK_PATH: &str = "sink.path";
 
 pub const EVENT_TIME_FIELD: &str = "event_time_field";
 pub const WATERMARK_FIELD: &str = "watermark_field";
@@ -71,6 +73,15 @@ pub const AVRO_SCHEMA_ID: &str = "avro.schema_id";
 pub const PARQUET_COMPRESSION: &str = "parquet.compression";
 pub const PARQUET_ROW_GROUP_BYTES: &str = "parquet.row_group_bytes";
 
+// ── S3 ────────────────────────────────────────────────────────────────────
+
+pub const S3_BUCKET: &str = "s3.bucket";
+pub const S3_REGION: &str = "s3.region";
+pub const S3_ENDPOINT: &str = "s3.endpoint";
+pub const S3_ACCESS_KEY_ID: &str = "s3.access_key_id";
+pub const S3_SECRET_ACCESS_KEY: &str = "s3.secret_access_key";
+pub const S3_SESSION_TOKEN: &str = "s3.session_token";
+
 // ── Protobuf ────────────────────────────────────────────────────────────────
 
 pub const PROTOBUF_INTO_UNSTRUCTURED_JSON: &str = "protobuf.into_unstructured_json";
@@ -84,3 +95,11 @@ pub const FRAMING_METHOD: &str = "framing.method";
 pub const FRAMING_MAX_LINE_LENGTH: &str = "framing.max_line_length";
 
 pub const FORMAT_DEBEZIUM_FLAG: &str = "format.debezium";
+
+// ── Streaming runtime common options ───────────────────────────────────────
+
+pub const CHECKPOINT_INTERVAL_MS: &str = "checkpoint.interval.ms";
+pub const PIPELINE_PARALLELISM: &str = "pipeline.parallelism";
+pub const KEY_BY_PARALLELISM: &str = "key_by.parallelism";
+pub const OPERATOR_MEMORY_BYTES: &str = "operator.memory.bytes";
+pub const SINK_MEMORY_BYTES: &str = "sink.memory.bytes";

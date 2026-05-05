@@ -10,14 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::sql::schema::source_table::SourceTable;
+use crate::sql::schema::LookupTable;
 
 use super::{PlanNode, PlanVisitor, PlanVisitorContext, PlanVisitorResult};
 
-/// Plan node that exposes a lookup table config as a logical plan input.
 #[derive(Debug)]
 pub struct LookupTablePlan {
-    pub table: SourceTable,
+    pub table: LookupTable,
 }
 
 impl PlanNode for LookupTablePlan {

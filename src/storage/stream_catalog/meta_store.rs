@@ -23,6 +23,19 @@ pub trait MetaStore: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
     fn delete(&self, key: &str) -> Result<()>;
     fn scan_prefix(&self, prefix: &str) -> Result<Vec<(String, Vec<u8>)>>;
+
+    /// Atomic apply of many puts (`Some(value)`) and/or deletes (`None`).
+    /// Default implementation is sequential; backends should override with a
+    /// single transaction / `WriteBatch` when available.
+    fn write_batch(&self, batch: Vec<(String, Option<Vec<u8>>)>) -> Result<()> {
+        for (k, v) in batch {
+            match v {
+                Some(val) => self.put(&k, val)?,
+                None => self.delete(&k)?,
+            }
+        }
+        Ok(())
+    }
 }
 
 /// In-process KV store for single-node deployments and tests.
@@ -66,5 +79,20 @@ impl MetaStore for InMemoryMetaStore {
             .filter(|(k, _)| k.starts_with(prefix))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect())
+    }
+
+    fn write_batch(&self, batch: Vec<(String, Option<Vec<u8>>)>) -> Result<()> {
+        let mut db = self.db.write();
+        for (k, v) in batch {
+            match v {
+                Some(val) => {
+                    db.insert(k, val);
+                }
+                None => {
+                    db.remove(&k);
+                }
+            }
+        }
+        Ok(())
     }
 }

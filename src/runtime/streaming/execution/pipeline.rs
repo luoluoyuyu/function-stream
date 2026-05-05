@@ -110,7 +110,7 @@ impl Pipeline {
                                         }
                                     }
                                     AlignmentStatus::Complete => {
-                                        let epoch = barrier.epoch as u64;
+                                        let epoch = barrier.epoch;
                                         self.chain_head
                                             .process_event(
                                                 idx,

@@ -15,7 +15,7 @@ use crate::sql::common::{CheckpointBarrier, Watermark};
 use arrow_array::RecordBatch;
 use async_trait::async_trait;
 use protocol::storage::{
-    KafkaSourceSubtaskCheckpoint, SourceCheckpointPayload, source_checkpoint_payload,
+    KafkaSourceSubtaskCheckpoint, SourceCheckpointInfo, source_checkpoint_info,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,17 +34,19 @@ pub enum SourceEvent {
     EndOfStream,
 }
 
-/// Optional metadata returned when a source completes a checkpoint barrier snapshot.
+/// Checkpoint metadata produced by a source subtask during a barrier snapshot.
+/// Sources fill this directly with [`SourceCheckpointInfo`] — the coordinator collects
+/// and persists these entries without any further translation step.
 #[derive(Debug, Default, Clone)]
 pub struct SourceCheckpointReport {
-    pub payloads: Vec<SourceCheckpointPayload>,
+    pub infos: Vec<SourceCheckpointInfo>,
 }
 
 impl SourceCheckpointReport {
     pub fn from_kafka_checkpoint(kafka: KafkaSourceSubtaskCheckpoint) -> Self {
         Self {
-            payloads: vec![SourceCheckpointPayload {
-                checkpoint: Some(source_checkpoint_payload::Checkpoint::Kafka(kafka)),
+            infos: vec![SourceCheckpointInfo {
+                info: Some(source_checkpoint_info::Info::Kafka(kafka)),
             }],
         }
     }
@@ -53,6 +55,11 @@ impl SourceCheckpointReport {
 #[async_trait]
 pub trait SourceOperator: Send + 'static {
     fn name(&self) -> &str;
+
+    /// Inject persisted checkpoint records before the source is started.
+    /// Called by the engine after the operator is constructed and before [`Self::on_start`].
+    /// Default implementation is a no-op; sources with stateful recovery override this.
+    fn set_recovery_checkpoint(&mut self, _infos: Vec<SourceCheckpointInfo>) {}
 
     async fn on_start(&mut self, _ctx: &mut TaskContext) -> anyhow::Result<()> {
         Ok(())
@@ -74,7 +81,7 @@ pub trait SourceOperator: Send + 'static {
     /// Kafka source keeps the default: offsets are reported at the barrier in [`Self::snapshot_state`].
     async fn commit_checkpoint(
         &mut self,
-        epoch: u32,
+        epoch: u64,
         _ctx: &mut TaskContext,
     ) -> anyhow::Result<()> {
         let _ = epoch;
@@ -82,7 +89,7 @@ pub trait SourceOperator: Send + 'static {
     }
 
     /// Same rollback hook as [`super::operator::Operator::abort_checkpoint`].
-    async fn abort_checkpoint(&mut self, epoch: u32, _ctx: &mut TaskContext) -> anyhow::Result<()> {
+    async fn abort_checkpoint(&mut self, epoch: u64, _ctx: &mut TaskContext) -> anyhow::Result<()> {
         let _ = epoch;
         Ok(())
     }

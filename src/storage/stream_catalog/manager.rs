@@ -10,24 +10,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::Path;
+use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{Context, anyhow, bail};
+use anyhow::{anyhow, bail};
 use datafusion::common::{Result as DFResult, internal_err, plan_err};
 use prost::Message;
 use protocol::function_stream_graph::FsProgram;
 use protocol::storage::{self as pb, table_definition};
 use tracing::{debug, info, warn};
 
-use crate::runtime::streaming::operators::source::kafka as kafka_snap;
 use unicase::UniCase;
 
 use crate::sql::common::constants::sql_field;
+use crate::sql::connector::config::ConnectorConfig;
+use crate::sql::schema::catalog::{ExternalTable, LookupTable, SourceTable};
 use crate::sql::schema::column_descriptor::ColumnDescriptor;
-use crate::sql::schema::connection_type::ConnectionType;
-use crate::sql::schema::source_table::SourceTable;
-use crate::sql::schema::table::Table as CatalogTable;
+use crate::sql::schema::table::CatalogEntity;
+use crate::sql::schema::table_role::TableRole;
+use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
 use crate::sql::schema::{StreamPlanningContext, StreamTable};
 
 use super::codec::CatalogCodec;
@@ -36,91 +37,16 @@ use super::meta_store::MetaStore;
 const CATALOG_KEY_PREFIX: &str = "catalog:stream_table:";
 const STREAMING_JOB_KEY_PREFIX: &str = "streaming_job:";
 
-/// One persisted streaming job row from catalog (program + checkpoint metadata + Kafka offsets).
+/// One persisted streaming job row from catalog (program + checkpoint metadata).
 #[derive(Debug, Clone)]
 pub struct StoredStreamingJob {
     pub table_name: String,
     pub program: FsProgram,
     pub checkpoint_interval_ms: u64,
     pub latest_checkpoint_epoch: u64,
-    pub kafka_source_checkpoints: Vec<pb::KafkaSourceSubtaskCheckpoint>,
-}
-
-fn parse_kafka_offset_snapshot_filename(name: &str) -> Option<(u32, u32)> {
-    const PREFIX: &str = "kafka_source_offsets_pipe";
-    const SUFFIX: &str = ".bin";
-    if !name.starts_with(PREFIX) || !name.ends_with(SUFFIX) {
-        return None;
-    }
-    let mid = name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?;
-    let (pipe, sub_part) = mid.split_once("_sub")?;
-    Some((pipe.parse().ok()?, sub_part.parse().ok()?))
-}
-
-/// Removes on-disk staging snapshots once their payload is committed into catalog (same epoch).
-fn cleanup_kafka_offset_snapshots_for_epoch(job_dir: &Path, epoch: u64) {
-    let Ok(rd) = std::fs::read_dir(job_dir) else {
-        return;
-    };
-    for ent in rd.flatten() {
-        let path = ent.path();
-        let name = ent.file_name().to_string_lossy().into_owned();
-        if parse_kafka_offset_snapshot_filename(&name).is_none() {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&path) else {
-            continue;
-        };
-        let Ok(saved) = kafka_snap::decode_kafka_offset_snapshot(&bytes) else {
-            continue;
-        };
-        if saved.epoch == epoch && std::fs::remove_file(&path).is_err() {
-            debug!(path = %path.display(), "Could not remove staged Kafka offset snapshot (non-fatal)");
-        }
-    }
-}
-
-/// Writes catalog-stored Kafka checkpoints back to the job state dir before `submit_job` resumes sources.
-pub fn materialize_kafka_source_checkpoints_from_catalog(
-    job_dir: &Path,
-    checkpoints: &[pb::KafkaSourceSubtaskCheckpoint],
-) -> DFResult<()> {
-    if checkpoints.is_empty() {
-        return Ok(());
-    }
-    std::fs::create_dir_all(job_dir).map_err(|e| {
-        datafusion::common::DataFusionError::Execution(format!(
-            "create job state dir {}: {e}",
-            job_dir.display()
-        ))
-    })?;
-    for c in checkpoints {
-        let saved = kafka_snap::KafkaSourceSavedOffsets {
-            epoch: c.checkpoint_epoch,
-            partitions: c
-                .partitions
-                .iter()
-                .map(|p| kafka_snap::KafkaState {
-                    partition: p.partition,
-                    offset: p.offset,
-                })
-                .collect(),
-        };
-        let path = kafka_snap::kafka_snapshot_path(job_dir, c.pipeline_id, c.subtask_index);
-        let bytes = kafka_snap::encode_kafka_offset_snapshot(&saved).map_err(|e| {
-            datafusion::common::DataFusionError::Execution(format!(
-                "encode kafka snapshot for {}: {e}",
-                path.display()
-            ))
-        })?;
-        std::fs::write(&path, &bytes).map_err(|e| {
-            datafusion::common::DataFusionError::Execution(format!(
-                "write kafka snapshot {}: {e}",
-                path.display()
-            ))
-        })?;
-    }
-    Ok(())
+    /// Source-type-agnostic per-subtask checkpoint entries. Each entry is a
+    /// [`pb::SourceCheckpointInfo`] oneof envelope — the catalog does not inspect the payload.
+    pub source_checkpoints: Vec<pb::SourceCheckpointInfo>,
 }
 
 pub struct CatalogManager {
@@ -188,7 +114,7 @@ impl CatalogManager {
             comment: comment.to_string(),
             checkpoint_interval_ms,
             latest_checkpoint_epoch: 0,
-            kafka_source_checkpoints: vec![],
+            source_checkpoints: vec![],
         };
         let payload = def.encode_to_vec();
         let key = Self::build_streaming_job_key(table_name);
@@ -207,16 +133,14 @@ impl CatalogManager {
     /// Persist the globally-completed checkpoint epoch after all operators ACK.
     /// Only advances forward; stale epochs are silently ignored.
     ///
-    /// `kafka_source_checkpoints` is assembled by the job coordinator from source pipeline checkpoint
-    /// ACKs (in-memory); it is stored next to `latest_checkpoint_epoch` in the catalog.
-    ///
-    /// `job_state_dir` is only used to remove legacy on-disk staging snapshots for this epoch, if present.
+    /// `source_checkpoints` is the source-agnostic list assembled by the job coordinator via
+    /// [`CheckpointAggregatorRegistry::aggregate_all`]; it is stored atomically next to
+    /// `latest_checkpoint_epoch` via [`MetaStore::write_batch`].
     pub fn commit_job_checkpoint(
         &self,
         table_name: &str,
         epoch: u64,
-        job_state_dir: &Path,
-        kafka_source_checkpoints: Vec<pb::KafkaSourceSubtaskCheckpoint>,
+        source_checkpoints: Vec<pb::SourceCheckpointInfo>,
     ) -> DFResult<()> {
         let key = Self::build_streaming_job_key(table_name);
 
@@ -237,22 +161,21 @@ impl CatalogManager {
 
         if epoch > def.latest_checkpoint_epoch {
             def.latest_checkpoint_epoch = epoch;
-            def.kafka_source_checkpoints = kafka_source_checkpoints;
-            let new_payload = def.encode_to_vec();
-            self.store.put(&key, new_payload)?;
+            def.source_checkpoints = source_checkpoints;
+            self.store
+                .write_batch(vec![(key, Some(def.encode_to_vec()))])?;
             debug!(
                 table = %table_name,
                 epoch = epoch,
-                kafka_subtasks = def.kafka_source_checkpoints.len(),
-                "Checkpoint metadata committed to Catalog"
+                source_subtasks = def.source_checkpoints.len(),
+                "Checkpoint metadata committed to Catalog (write_batch)"
             );
-            cleanup_kafka_offset_snapshots_for_epoch(job_state_dir, epoch);
         }
 
         Ok(())
     }
 
-    /// Load all persisted streaming jobs (including Kafka offset checkpoints for restore).
+    /// Load all persisted streaming jobs (including source checkpoint data for restore).
     pub fn load_streaming_job_definitions(&self) -> DFResult<Vec<StoredStreamingJob>> {
         let records = self.store.scan_prefix(STREAMING_JOB_KEY_PREFIX)?;
         let mut out = Vec::with_capacity(records.len());
@@ -284,7 +207,7 @@ impl CatalogManager {
                 program,
                 checkpoint_interval_ms: def.checkpoint_interval_ms,
                 latest_checkpoint_epoch: def.latest_checkpoint_epoch,
-                kafka_source_checkpoints: def.kafka_source_checkpoints,
+                source_checkpoints: def.source_checkpoints,
             });
         }
         Ok(out)
@@ -294,7 +217,7 @@ impl CatalogManager {
     // Catalog table persistence (CREATE TABLE / DROP TABLE)
     // ========================================================================
 
-    pub fn add_catalog_table(&self, table: CatalogTable) -> DFResult<()> {
+    pub fn add_catalog_table(&self, table: CatalogEntity) -> DFResult<()> {
         let proto_def = self.encode_catalog_table(&table)?;
         let payload = proto_def.encode_to_vec();
         let key = Self::build_store_key(table.name());
@@ -332,36 +255,44 @@ impl CatalogManager {
         ctx.tables.catalogs = catalogs.clone();
 
         for (name, table) in catalogs {
-            let source = match table.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => s,
-                CatalogTable::TableFromQuery { .. } => continue,
+            let stream = match table.as_ref() {
+                CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                    ExternalTable::Source(s) => Some(StreamTable::Source {
+                        name: s.name().to_string(),
+                        connector: s.connector().to_string(),
+                        schema: Arc::new(s.produce_physical_schema()),
+                        event_time_field: s.event_time_field().map(str::to_string),
+                        watermark_field: s.stream_catalog_watermark_field(),
+                        with_options: s.catalog_with_options().clone(),
+                    }),
+                    ExternalTable::Lookup(l) => Some(StreamTable::Source {
+                        name: l.name().to_string(),
+                        connector: l.connector().to_string(),
+                        schema: Arc::new(l.produce_physical_schema()),
+                        event_time_field: None,
+                        watermark_field: None,
+                        with_options: l.catalog_with_options().clone(),
+                    }),
+                    ExternalTable::Sink(_) => None,
+                },
+                CatalogEntity::ComputedTable { .. } => None,
             };
-
-            let schema = Arc::new(source.produce_physical_schema());
-            ctx.tables.streams.insert(
-                name,
-                Arc::new(StreamTable::Source {
-                    name: source.name().to_string(),
-                    connector: source.connector().to_string(),
-                    schema,
-                    event_time_field: source.event_time_field().map(str::to_string),
-                    watermark_field: source.stream_catalog_watermark_field(),
-                    with_options: source.catalog_with_options().clone(),
-                }),
-            );
+            if let Some(st) = stream {
+                ctx.tables.streams.insert(name, Arc::new(st));
+            }
         }
         ctx
     }
 
     /// All persisted catalog tables, sorted by table name.
-    pub fn list_catalog_tables(&self) -> DFResult<Vec<Arc<CatalogTable>>> {
-        let mut out: Vec<Arc<CatalogTable>> =
+    pub fn list_catalog_tables(&self) -> DFResult<Vec<Arc<CatalogEntity>>> {
+        let mut out: Vec<Arc<CatalogEntity>> =
             self.load_catalog_tables_map()?.into_values().collect();
         out.sort_by(|a, b| a.name().cmp(b.name()));
         Ok(out)
     }
 
-    pub fn get_catalog_table(&self, name: &str) -> DFResult<Option<Arc<CatalogTable>>> {
+    pub fn get_catalog_table(&self, name: &str) -> DFResult<Option<Arc<CatalogEntity>>> {
         let key = UniCase::new(name.to_string());
         Ok(self.load_catalog_tables_map()?.get(&key).cloned())
     }
@@ -376,17 +307,40 @@ impl CatalogManager {
                 watermark_field,
                 with_options,
             } => {
-                let mut source = SourceTable::new(name, connector, ConnectionType::Source);
-                source.schema_specs = schema
+                let schema_specs: Vec<ColumnDescriptor> = schema
                     .fields()
                     .iter()
                     .map(|f| ColumnDescriptor::new_physical((**f).clone()))
                     .collect();
-                source.inferred_fields = Some(schema.fields().iter().cloned().collect());
-                source.temporal_config.event_column = event_time_field;
-                source.temporal_config.watermark_strategy_column = watermark_field;
-                source.catalog_with_options = with_options;
-                self.add_catalog_table(CatalogTable::ConnectorTable(source))
+                let inferred_fields = Some(schema.fields().iter().cloned().collect());
+                let physical_schema = schema.as_ref().clone();
+
+                let connector_config = build_connector_config_for_role(
+                    &connector,
+                    TableRole::Ingestion,
+                    &with_options,
+                    &physical_schema,
+                )?;
+
+                let source = SourceTable {
+                    table_identifier: name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    temporal_config: TemporalPipelineConfig {
+                        event_column: event_time_field,
+                        watermark_strategy_column: watermark_field,
+                        liveness_timeout: None,
+                    },
+                    key_constraints: Vec::new(),
+                    payload_format: None,
+                    connection_format: None,
+                    description: String::new(),
+                    catalog_with_options: with_options.into_iter().collect(),
+                    registry_id: None,
+                    inferred_fields,
+                };
+                self.add_catalog_table(CatalogEntity::external(ExternalTable::Source(source)))
             }
             StreamTable::Sink { name, .. } => plan_err!(
                 "Persisting streaming sink '{name}' in stream catalog is no longer supported"
@@ -406,19 +360,7 @@ impl CatalogManager {
         self.list_catalog_tables()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|t| match t.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => {
-                    Some(Arc::new(StreamTable::Source {
-                        name: s.name().to_string(),
-                        connector: s.connector().to_string(),
-                        schema: Arc::new(s.produce_physical_schema()),
-                        event_time_field: s.event_time_field().map(str::to_string),
-                        watermark_field: s.stream_catalog_watermark_field(),
-                        with_options: s.catalog_with_options().clone(),
-                    }))
-                }
-                CatalogTable::TableFromQuery { .. } => None,
-            })
+            .filter_map(|t| external_to_stream_table(t.as_ref()).map(Arc::new))
             .collect()
     }
 
@@ -426,44 +368,54 @@ impl CatalogManager {
         self.get_catalog_table(name)
             .ok()
             .flatten()
-            .and_then(|t| match t.as_ref() {
-                CatalogTable::ConnectorTable(s) | CatalogTable::LookupTable(s) => {
-                    Some(Arc::new(StreamTable::Source {
-                        name: s.name().to_string(),
-                        connector: s.connector().to_string(),
-                        schema: Arc::new(s.produce_physical_schema()),
-                        event_time_field: s.event_time_field().map(str::to_string),
-                        watermark_field: s.stream_catalog_watermark_field(),
-                        with_options: s.catalog_with_options().clone(),
-                    }))
-                }
-                CatalogTable::TableFromQuery { .. } => None,
-            })
+            .and_then(|t| external_to_stream_table(t.as_ref()).map(Arc::new))
     }
 
-    fn encode_catalog_table(&self, table: &CatalogTable) -> DFResult<pb::TableDefinition> {
+    fn encode_catalog_table(&self, table: &CatalogEntity) -> DFResult<pb::TableDefinition> {
         let table_type = match table {
-            CatalogTable::ConnectorTable(source) | CatalogTable::LookupTable(source) => {
-                let mut opts = source.catalog_with_options().clone();
-                opts.entry("connector".to_string())
-                    .or_insert_with(|| source.connector().to_string());
-                let catalog_row = pb::CatalogSourceTable {
-                    arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
-                        source.produce_physical_schema(),
-                    ))?,
-                    event_time_field: source.event_time_field().map(str::to_string),
-                    watermark_field: source.stream_catalog_watermark_field(),
-                    with_options: opts.into_iter().collect(),
-                    connector: source.connector().to_string(),
-                    description: source.description.clone(),
-                };
-                if matches!(table, CatalogTable::LookupTable(_)) {
-                    table_definition::TableType::LookupTable(catalog_row)
-                } else {
+            CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+                ExternalTable::Source(source) => {
+                    let mut opts: std::collections::HashMap<String, String> =
+                        source.catalog_with_options.clone().into_iter().collect();
+                    opts.entry("connector".to_string())
+                        .or_insert_with(|| source.connector().to_string());
+                    let catalog_row = pb::CatalogSourceTable {
+                        arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
+                            source.produce_physical_schema(),
+                        ))?,
+                        event_time_field: source.event_time_field().map(str::to_string),
+                        watermark_field: source.stream_catalog_watermark_field(),
+                        with_options: opts,
+                        connector: source.connector().to_string(),
+                        description: source.description.clone(),
+                    };
                     table_definition::TableType::ConnectorTable(catalog_row)
                 }
-            }
-            CatalogTable::TableFromQuery { name, .. } => {
+                ExternalTable::Lookup(lookup) => {
+                    let mut opts: std::collections::HashMap<String, String> =
+                        lookup.catalog_with_options.clone().into_iter().collect();
+                    opts.entry("connector".to_string())
+                        .or_insert_with(|| lookup.connector().to_string());
+                    let catalog_row = pb::CatalogSourceTable {
+                        arrow_schema_ipc: CatalogCodec::encode_schema(&Arc::new(
+                            lookup.produce_physical_schema(),
+                        ))?,
+                        event_time_field: None,
+                        watermark_field: None,
+                        with_options: opts,
+                        connector: lookup.connector().to_string(),
+                        description: lookup.description.clone(),
+                    };
+                    table_definition::TableType::LookupTable(catalog_row)
+                }
+                ExternalTable::Sink(sink) => {
+                    return plan_err!(
+                        "Persisting SINK table '{}' in stream catalog is not supported",
+                        sink.name()
+                    );
+                }
+            },
+            CatalogEntity::ComputedTable { name, .. } => {
                 return plan_err!(
                     "Persisting query-defined table '{}' is not supported by stream catalog storage",
                     name
@@ -483,7 +435,7 @@ impl CatalogManager {
         table_name: String,
         source_row: pb::CatalogSourceTable,
         as_lookup: bool,
-    ) -> DFResult<CatalogTable> {
+    ) -> DFResult<CatalogEntity> {
         let connector = if source_row.connector.is_empty() {
             source_row
                 .with_options
@@ -493,71 +445,75 @@ impl CatalogManager {
         } else {
             source_row.connector.clone()
         };
-        let mut source = SourceTable::new(
-            table_name,
-            connector,
-            if as_lookup {
-                ConnectionType::Lookup
-            } else {
-                ConnectionType::Source
-            },
-        );
+
         let schema = CatalogCodec::decode_schema(&source_row.arrow_schema_ipc)?;
-        source.schema_specs = schema
+        let schema_specs: Vec<ColumnDescriptor> = schema
             .fields()
             .iter()
             .map(|f| ColumnDescriptor::new_physical((**f).clone()))
             .collect();
-        source.inferred_fields = Some(schema.fields().iter().cloned().collect());
-        source.temporal_config.event_column = source_row.event_time_field;
-        source.temporal_config.watermark_strategy_column = source_row
-            .watermark_field
-            .filter(|w| w != sql_field::COMPUTED_WATERMARK);
-        source.catalog_with_options = source_row.with_options.into_iter().collect();
-        source.description = source_row.description;
+        let inferred_fields = Some(schema.fields().iter().cloned().collect());
+        let physical_schema = schema.as_ref().clone();
+        let catalog_with_options: BTreeMap<String, String> =
+            source_row.with_options.clone().into_iter().collect();
 
-        // Rebuild strongly-typed ConnectorConfig from persisted WITH options.
-        if source.connector().eq_ignore_ascii_case("kafka") {
-            use crate::sql::schema::ConnectorConfig;
-            use crate::sql::schema::kafka_operator_config::build_kafka_proto_config_from_string_map;
-            let opts_map: std::collections::HashMap<String, String> = source
-                .catalog_with_options
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let physical = source.produce_physical_schema();
-            if let Ok(proto_cfg) = build_kafka_proto_config_from_string_map(opts_map, &physical) {
-                source.connector_config = match proto_cfg {
-                    protocol::function_stream_graph::connector_op::Config::KafkaSource(cfg) => {
-                        ConnectorConfig::KafkaSource(cfg)
-                    }
-                    protocol::function_stream_graph::connector_op::Config::KafkaSink(cfg) => {
-                        ConnectorConfig::KafkaSink(cfg)
-                    }
-                    protocol::function_stream_graph::connector_op::Config::Generic(g) => {
-                        ConnectorConfig::Generic(g.properties)
-                    }
-                };
-            }
+        let role = if as_lookup {
+            TableRole::Reference
         } else {
-            use crate::sql::schema::ConnectorConfig;
-            source.connector_config = ConnectorConfig::Generic(
-                source
-                    .catalog_with_options
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-            );
-        }
+            TableRole::Ingestion
+        };
+        let connector_config = build_connector_config_for_role(
+            &connector,
+            role,
+            &source_row.with_options,
+            &physical_schema,
+        )?;
 
         if as_lookup {
-            Ok(CatalogTable::LookupTable(source))
+            Ok(CatalogEntity::external(ExternalTable::Lookup(
+                LookupTable {
+                    table_identifier: table_name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    key_constraints: Vec::new(),
+                    lookup_cache_max_bytes: None,
+                    lookup_cache_ttl: None,
+                    connection_format: None,
+                    description: source_row.description,
+                    catalog_with_options,
+                    registry_id: None,
+                    inferred_fields,
+                },
+            )))
         } else {
-            Ok(CatalogTable::ConnectorTable(source))
+            let watermark_field = source_row
+                .watermark_field
+                .filter(|w| w != sql_field::COMPUTED_WATERMARK);
+            Ok(CatalogEntity::external(ExternalTable::Source(
+                SourceTable {
+                    table_identifier: table_name,
+                    adapter_type: connector,
+                    schema_specs,
+                    connector_config,
+                    temporal_config: TemporalPipelineConfig {
+                        event_column: source_row.event_time_field,
+                        watermark_strategy_column: watermark_field,
+                        liveness_timeout: None,
+                    },
+                    key_constraints: Vec::new(),
+                    payload_format: None,
+                    connection_format: None,
+                    description: source_row.description,
+                    catalog_with_options,
+                    registry_id: None,
+                    inferred_fields,
+                },
+            )))
         }
     }
 
-    fn decode_catalog_table(&self, proto_def: pb::TableDefinition) -> DFResult<CatalogTable> {
+    fn decode_catalog_table(&self, proto_def: pb::TableDefinition) -> DFResult<CatalogEntity> {
         let Some(table_type) = proto_def.table_type else {
             return internal_err!(
                 "Corrupted catalog row: missing table_type for {}",
@@ -577,7 +533,7 @@ impl CatalogManager {
 
     fn load_catalog_tables_map(
         &self,
-    ) -> DFResult<std::collections::HashMap<crate::sql::schema::ObjectName, Arc<CatalogTable>>>
+    ) -> DFResult<std::collections::HashMap<crate::sql::schema::ObjectName, Arc<CatalogEntity>>>
     {
         let mut out = std::collections::HashMap::new();
         let records = self.store.scan_prefix(CATALOG_KEY_PREFIX)?;
@@ -608,6 +564,52 @@ impl CatalogManager {
             out.insert(object_name, Arc::new(table));
         }
         Ok(out)
+    }
+}
+
+fn build_connector_config_for_role<M>(
+    connector: &str,
+    role: TableRole,
+    with_options: &M,
+    physical_schema: &datafusion::arrow::datatypes::Schema,
+) -> DFResult<ConnectorConfig>
+where
+    for<'a> &'a M: IntoIterator<Item = (&'a String, &'a String)>,
+{
+    let flat: std::collections::HashMap<String, String> = with_options
+        .into_iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    crate::sql::connector::factory::build_connector_config_from_catalog(
+        connector,
+        role,
+        flat,
+        physical_schema,
+    )
+}
+
+fn external_to_stream_table(table: &CatalogEntity) -> Option<StreamTable> {
+    match table {
+        CatalogEntity::ExternalConnector(b) => match b.as_ref() {
+            ExternalTable::Source(s) => Some(StreamTable::Source {
+                name: s.name().to_string(),
+                connector: s.connector().to_string(),
+                schema: Arc::new(s.produce_physical_schema()),
+                event_time_field: s.event_time_field().map(str::to_string),
+                watermark_field: s.stream_catalog_watermark_field(),
+                with_options: s.catalog_with_options().clone(),
+            }),
+            ExternalTable::Lookup(l) => Some(StreamTable::Source {
+                name: l.name().to_string(),
+                connector: l.connector().to_string(),
+                schema: Arc::new(l.produce_physical_schema()),
+                event_time_field: None,
+                watermark_field: None,
+                with_options: l.catalog_with_options().clone(),
+            }),
+            ExternalTable::Sink(_) => None,
+        },
+        CatalogEntity::ComputedTable { .. } => None,
     }
 }
 
@@ -677,21 +679,10 @@ pub fn restore_streaming_jobs_from_store() {
             program,
             checkpoint_interval_ms: interval_ms,
             latest_checkpoint_epoch: latest_epoch,
-            kafka_source_checkpoints,
+            source_checkpoints,
         } = job;
         let jm = job_manager.clone();
         let name = table_name.clone();
-
-        let job_dir = jm.job_state_directory(&table_name);
-        if let Err(e) =
-            materialize_kafka_source_checkpoints_from_catalog(&job_dir, &kafka_source_checkpoints)
-        {
-            warn!(
-                table = %table_name,
-                error = %e,
-                "Failed to materialize Kafka checkpoints from catalog before job restore"
-            );
-        }
 
         let custom_interval = if interval_ms > 0 {
             Some(interval_ms)
@@ -704,7 +695,13 @@ pub fn restore_streaming_jobs_from_store() {
             None
         };
 
-        match rt.block_on(jm.submit_job(name.clone(), program, custom_interval, recovery_epoch)) {
+        match rt.block_on(jm.submit_job(
+            name.clone(),
+            program,
+            custom_interval,
+            recovery_epoch,
+            source_checkpoints,
+        )) {
             Ok(job_id) => {
                 info!(
                     table = %table_name, job_id = %job_id,
@@ -727,36 +724,6 @@ pub fn restore_streaming_jobs_from_store() {
     );
 }
 
-pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow::Result<()> {
-    if !config.stream_catalog.persist {
-        return CatalogManager::init_global_in_memory()
-            .context("Stream catalog (CatalogManager) in-memory init failed");
-    }
-
-    let path = config
-        .stream_catalog
-        .db_path
-        .as_ref()
-        .map(|p| crate::config::resolve_path(p))
-        .unwrap_or_else(|| crate::config::get_data_dir().join("stream_catalog"));
-
-    std::fs::create_dir_all(&path).with_context(|| {
-        format!(
-            "Failed to create stream catalog directory {}",
-            path.display()
-        )
-    })?;
-
-    let store = std::sync::Arc::new(super::RocksDbMetaStore::open(&path).with_context(|| {
-        format!(
-            "Failed to open stream catalog RocksDB at {}",
-            path.display()
-        )
-    })?);
-
-    CatalogManager::init_global(store).context("Stream catalog (CatalogManager) init failed")
-}
-
 #[allow(clippy::unwrap_or_default)]
 pub fn planning_schema_provider() -> StreamPlanningContext {
     CatalogManager::try_global()
@@ -770,10 +737,11 @@ mod tests {
 
     use datafusion::arrow::datatypes::{DataType, Field};
 
+    use crate::sql::connector::config::ConnectorConfig;
+    use crate::sql::schema::catalog::{ExternalTable, SourceTable};
     use crate::sql::schema::column_descriptor::ColumnDescriptor;
-    use crate::sql::schema::connection_type::ConnectionType;
-    use crate::sql::schema::source_table::SourceTable;
-    use crate::sql::schema::table::Table as CatalogTable;
+    use crate::sql::schema::table::CatalogEntity;
+    use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
     use crate::storage::stream_catalog::InMemoryMetaStore;
 
     use super::CatalogManager;
@@ -782,34 +750,34 @@ mod tests {
         CatalogManager::new(Arc::new(InMemoryMetaStore::new()))
     }
 
-    #[test]
-    fn add_table_roundtrip_snapshot() {
-        let mgr = create_test_manager();
-        let mut source = SourceTable::new("t1", "kafka", ConnectionType::Source);
-        source.schema_specs = vec![ColumnDescriptor::new_physical(Field::new(
-            "a",
-            DataType::Int32,
-            false,
-        ))];
-        source.temporal_config.event_column = Some("ts".into());
-        let table = CatalogTable::ConnectorTable(source);
-
-        mgr.add_catalog_table(table).unwrap();
-
-        let got = mgr.get_catalog_table("t1").unwrap().expect("table present");
-        assert_eq!(got.name(), "t1");
+    fn make_test_source(name: &str) -> SourceTable {
+        SourceTable {
+            table_identifier: name.to_string(),
+            adapter_type: "kafka".to_string(),
+            schema_specs: vec![ColumnDescriptor::new_physical(Field::new(
+                "a",
+                DataType::Int32,
+                false,
+            ))],
+            connector_config: ConnectorConfig::KafkaSource(
+                protocol::function_stream_graph::KafkaSourceConfig::default(),
+            ),
+            temporal_config: TemporalPipelineConfig::default(),
+            key_constraints: Vec::new(),
+            payload_format: None,
+            connection_format: None,
+            description: String::new(),
+            catalog_with_options: std::collections::BTreeMap::new(),
+            registry_id: None,
+            inferred_fields: None,
+        }
     }
 
     #[test]
     fn drop_table_if_exists() {
         let mgr = create_test_manager();
-        let mut source = SourceTable::new("t_drop", "kafka", ConnectionType::Source);
-        source.schema_specs = vec![ColumnDescriptor::new_physical(Field::new(
-            "a",
-            DataType::Int32,
-            false,
-        ))];
-        mgr.add_catalog_table(CatalogTable::ConnectorTable(source))
+        let source = make_test_source("t_drop");
+        mgr.add_catalog_table(CatalogEntity::external(ExternalTable::Source(source)))
             .unwrap();
 
         mgr.drop_catalog_table("t_drop", false).unwrap();

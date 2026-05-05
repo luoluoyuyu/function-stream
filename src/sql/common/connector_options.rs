@@ -106,6 +106,21 @@ impl ConnectorOptions {
         }
     }
 
+    pub fn peek_opt_str(&self, name: &str) -> DFResult<Option<String>> {
+        match self.options.get(name) {
+            Some(Expr::Value(ValueWithSpan {
+                value: SqlValue::SingleQuotedString(s),
+                span: _,
+            })) => Ok(Some(s.clone())),
+            Some(e) => Err(plan_datafusion_err!(
+                "expected with option '{}' to be a single-quoted string, but it was `{:?}`",
+                name,
+                e
+            )),
+            None => Ok(None),
+        }
+    }
+
     pub fn pull_str(&mut self, name: &str) -> DFResult<String> {
         self.pull_opt_str(name)?
             .ok_or_else(|| plan_datafusion_err!("required option '{}' not set", name))

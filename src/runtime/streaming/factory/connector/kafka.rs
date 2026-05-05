@@ -136,8 +136,8 @@ impl OperatorConstructor for KafkaConnectorDispatcher {
                 Self::build_kafka_source(&op.name, cfg, fs_schema)
             }
             Some(Config::KafkaSink(ref cfg)) => Self::build_kafka_sink(&op.name, cfg, fs_schema),
-            Some(Config::Generic(_)) => bail!(
-                "ConnectorOp '{}': GenericConnectorConfig dispatch not yet implemented",
+            Some(_) => bail!(
+                "ConnectorOp '{}': received non-kafka connector config for Kafka dispatcher",
                 op.name
             ),
             None => bail!("ConnectorOp '{}' has no configuration payload", op.name),

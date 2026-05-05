@@ -10,6 +10,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
+
+use anyhow::Context;
+
 pub mod state_backend;
 pub mod stream_catalog;
 pub mod task;
+
+/// Install the process-global [`stream_catalog::CatalogManager`] from configuration.
+/// In-memory when `config.stream_catalog.persist` is `false`, otherwise a durable
+/// [`stream_catalog::RocksDbMetaStore`] (default path: `{data_dir}/catalog.db`).
+pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow::Result<()> {
+    use stream_catalog::{CatalogManager, InMemoryMetaStore, MetaStore, RocksDbMetaStore};
+
+    let store: Arc<dyn MetaStore> = if !config.stream_catalog.persist {
+        Arc::new(InMemoryMetaStore::new())
+    } else {
+        let path = config
+            .stream_catalog
+            .db_path
+            .as_ref()
+            .map(|p| crate::config::resolve_path(p))
+            .unwrap_or_else(|| crate::config::get_data_dir().join("catalog.db"));
+
+        std::fs::create_dir_all(&path).with_context(|| {
+            format!(
+                "Failed to create stream catalog RocksDB directory {}",
+                path.display()
+            )
+        })?;
+
+        Arc::new(RocksDbMetaStore::open(&path).with_context(|| {
+            format!(
+                "Failed to open stream catalog RocksDB at {}",
+                path.display()
+            )
+        })?)
+    };
+
+    CatalogManager::init_global(store).context("Stream catalog (CatalogManager) global init failed")
+}

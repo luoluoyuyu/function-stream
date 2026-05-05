@@ -12,11 +12,14 @@
 
 from .instance import FunctionStreamInstance
 
-__all__ = ["FunctionStreamInstance", "KafkaDockerManager"]
+__all__ = ["FunctionStreamInstance", "KafkaDockerManager", "MinioDockerManager"]
 
 
 def __getattr__(name: str):
     if name == "KafkaDockerManager":
         from .kafka_manager import KafkaDockerManager
         return KafkaDockerManager
+    if name == "MinioDockerManager":
+        from .minio_manager import MinioDockerManager
+        return MinioDockerManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

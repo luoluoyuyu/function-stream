@@ -10,78 +10,79 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-
 use datafusion::arrow::datatypes::{DataType, Field};
 use datafusion::common::{Result, plan_err};
 
 use super::column_descriptor::ColumnDescriptor;
 use crate::sql::common::Format;
-use crate::sql::common::constants::{cdc, connection_format_value, with_opt_bool_str};
-use crate::sql::common::with_option_keys as opt;
+use crate::sql::common::constants::cdc;
 
-/// High-level payload encoding (orthogonal to `Format` wire details in `ConnectionSchema`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DataEncodingFormat {
+    #[default]
+    Raw,
     StandardJson,
     DebeziumJson,
     Avro,
     Parquet,
-    Raw,
+    Csv,
+    JsonL,
+    Orc,
+    Protobuf,
 }
 
 impl DataEncodingFormat {
-    pub fn extract_from_map(opts: &HashMap<String, String>) -> Result<Self> {
-        let format_str = opts
-            .get(opt::FORMAT)
-            .map(|s| s.as_str())
-            .unwrap_or(opt::DEFAULT_FORMAT_VALUE);
-        let is_debezium = opts
-            .get(opt::FORMAT_DEBEZIUM_FLAG)
-            .or_else(|| opts.get(opt::JSON_DEBEZIUM))
-            .map(|s| s == with_opt_bool_str::TRUE)
-            .unwrap_or(false);
-
-        match (format_str, is_debezium) {
-            (f, true) if f == connection_format_value::JSON => Ok(Self::DebeziumJson),
-            (f, _) if f == connection_format_value::DEBEZIUM_JSON => Ok(Self::DebeziumJson),
-            (f, false) if f == connection_format_value::JSON => Ok(Self::StandardJson),
-            (f, _) if f == connection_format_value::AVRO => Ok(Self::Avro),
-            (f, _) if f == connection_format_value::PARQUET => Ok(Self::Parquet),
-            _ => Ok(Self::Raw),
-        }
-    }
-
-    pub fn from_connection_format(format: &Format) -> Self {
+    pub fn from_format(format: Option<&Format>) -> Self {
         match format {
-            Format::Json(j) if j.debezium => Self::DebeziumJson,
-            Format::Json(_) => Self::StandardJson,
-            Format::Avro(_) => Self::Avro,
-            Format::Parquet(_) => Self::Parquet,
-            Format::Protobuf(_) | Format::RawString(_) | Format::RawBytes(_) => Self::Raw,
+            Some(Format::Json(j)) if j.debezium => Self::DebeziumJson,
+            Some(Format::Json(_)) => Self::StandardJson,
+            Some(Format::Avro(_)) => Self::Avro,
+            Some(Format::Parquet(_)) => Self::Parquet,
+            Some(Format::Csv(_)) => Self::Csv,
+            Some(Format::Protobuf(_)) => Self::Protobuf,
+            Some(Format::RawString(_)) | Some(Format::RawBytes(_)) | None => Self::Raw,
+            Some(_) => Self::Raw,
         }
     }
 
-    pub fn supports_delta_updates(&self) -> bool {
+    pub fn is_cdc_format(&self) -> bool {
         matches!(self, Self::DebeziumJson)
     }
 
-    pub fn apply_envelope(self, columns: Vec<ColumnDescriptor>) -> Result<Vec<ColumnDescriptor>> {
-        if !self.supports_delta_updates() {
-            return Ok(columns);
+    #[inline]
+    pub fn supports_delta_updates(&self) -> bool {
+        self.is_cdc_format()
+    }
+
+    pub fn apply_envelope(
+        &self,
+        logical_columns: Vec<ColumnDescriptor>,
+    ) -> Result<Vec<ColumnDescriptor>> {
+        if !self.is_cdc_format() {
+            return Ok(logical_columns);
         }
-        if columns.iter().any(|c| c.is_computed()) {
-            return plan_err!("Virtual fields are not supported with CDC envelope");
+
+        if logical_columns.is_empty() {
+            return Ok(logical_columns);
         }
-        if columns.is_empty() {
-            return Ok(columns);
+
+        if logical_columns.iter().any(|c| c.is_computed()) {
+            return plan_err!(
+                "Computed/Virtual columns are not supported directly inside a CDC source table; \
+                 define computed columns in a downstream VIEW or AS SELECT streaming query"
+            );
         }
-        let fields: Vec<Field> = columns.into_iter().map(|c| c.into_arrow_field()).collect();
-        let struct_type = DataType::Struct(fields.into());
+
+        let inner_fields: Vec<Field> = logical_columns
+            .into_iter()
+            .map(|c| c.into_arrow_field())
+            .collect();
+
+        let row_struct_type = DataType::Struct(inner_fields.into());
 
         Ok(vec![
-            ColumnDescriptor::new_physical(Field::new(cdc::BEFORE, struct_type.clone(), true)),
-            ColumnDescriptor::new_physical(Field::new(cdc::AFTER, struct_type.clone(), true)),
+            ColumnDescriptor::new_physical(Field::new(cdc::BEFORE, row_struct_type.clone(), true)),
+            ColumnDescriptor::new_physical(Field::new(cdc::AFTER, row_struct_type, true)),
             ColumnDescriptor::new_physical(Field::new(cdc::OP, DataType::Utf8, true)),
         ])
     }

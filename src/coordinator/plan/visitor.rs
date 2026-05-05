@@ -11,10 +11,11 @@
 // limitations under the License.
 
 use super::{
-    CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan, DropFunctionPlan,
-    DropStreamingTablePlan, DropTablePlan, LookupTablePlan, ShowCatalogTablesPlan,
-    ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan, ShowStreamingTablesPlan,
-    StartFunctionPlan, StopFunctionPlan, StreamingTable, StreamingTableConnectorPlan,
+    CompileErrorPlan, CreateFunctionPlan, CreatePythonFunctionPlan, CreateTablePlan,
+    DropFunctionPlan, DropStreamingTablePlan, DropTablePlan, LookupTablePlan,
+    ShowCatalogTablesPlan, ShowCreateStreamingTablePlan, ShowCreateTablePlan, ShowFunctionsPlan,
+    ShowStreamingTablesPlan, StartFunctionPlan, StopFunctionPlan, StreamingTable,
+    StreamingTableConnectorPlan,
 };
 
 /// Context passed to PlanVisitor methods
@@ -51,6 +52,12 @@ pub enum PlanVisitorResult {
 }
 
 pub trait PlanVisitor {
+    fn visit_compile_error_plan(
+        &self,
+        plan: &CompileErrorPlan,
+        context: &PlanVisitorContext,
+    ) -> PlanVisitorResult;
+
     fn visit_create_function(
         &self,
         plan: &CreateFunctionPlan,

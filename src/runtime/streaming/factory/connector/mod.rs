@@ -10,8 +10,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod delta;
 mod dispatchers;
+pub mod filesystem;
+pub mod iceberg;
 pub mod kafka;
+pub mod lancedb;
+pub mod s3;
+pub mod sink_props_codec;
 
+pub use delta::DeltaSinkDispatcher;
 pub use dispatchers::{ConnectorSinkDispatcher, ConnectorSourceDispatcher};
+pub use filesystem::FilesystemSinkDispatcher;
+pub use iceberg::IcebergSinkDispatcher;
 pub use kafka::KafkaConnectorDispatcher;
+pub use lancedb::LanceDbSinkDispatcher;
+pub use s3::S3SinkDispatcher;

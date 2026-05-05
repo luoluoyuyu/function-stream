@@ -23,7 +23,7 @@ pub enum AlignmentStatus {
 #[derive(Debug)]
 pub struct BarrierAligner {
     input_count: usize,
-    current_epoch: Option<u32>,
+    current_epoch: Option<u64>,
     reached_inputs: HashSet<usize>,
 }
 

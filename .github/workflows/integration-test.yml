@@ -53,7 +53,8 @@ jobs:
             libcurl4-openssl-dev \
             pkg-config \
             libsasl2-dev \
-            protobuf-compiler
+            protobuf-compiler \
+            libprotobuf-dev
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -66,6 +67,12 @@ jobs:
 
       - name: Run Integration Tests
         run: make integration-test
+
+      - name: Install cargo-sweep
+        run: cargo install cargo-sweep --locked
+
+      - name: Prune stale Cargo artifacts
+        run: cargo sweep -t 7
 
       - name: Upload Test Logs
         if: failure()

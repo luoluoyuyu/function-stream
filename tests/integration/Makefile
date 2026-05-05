@@ -15,7 +15,7 @@
 # -----------------------------------------------------------------------
 # Usage:
 #   make test        — Setup env + run pytest  (PYTEST_ARGS="-k xxx")
-#   make clean       — Remove .venv and test output
+#   make clean       — Remove test output
 #
 # Prerequisites:
 #   The FunctionStream binary must already be built (make build / make build-lite
@@ -24,7 +24,7 @@
 
 PROJECT_ROOT := $(shell git -C $(CURDIR) rev-parse --show-toplevel)
 PYTHON_ROOT  := $(PROJECT_ROOT)/python
-VENV         := $(CURDIR)/.venv
+VENV         := $(PROJECT_ROOT)/.venv
 PIP          := $(VENV)/bin/pip
 PY           := $(VENV)/bin/python
 
@@ -41,7 +41,7 @@ help:
 	@echo "Integration Test Targets:"
 	@echo ""
 	@echo "  test    Setup Python env + run pytest (PYTEST_ARGS=...)"
-	@echo "  clean   Remove .venv and target/tests output"
+	@echo "  clean   Remove target/tests output"
 
 install: requirements.txt $(PYTHON_ROOT)/functionstream-api/pyproject.toml $(PYTHON_ROOT)/functionstream-client/pyproject.toml
 	$(call log,ENV,Setting up Python virtual environment)
@@ -58,7 +58,6 @@ test: install
 
 clean:
 	$(call log,CLEAN,Removing test artifacts)
-	@rm -rf $(VENV)
 	@rm -rf $(CURDIR)/target
 	@rm -rf $(CURDIR)/install
 	$(call success,Clean complete)

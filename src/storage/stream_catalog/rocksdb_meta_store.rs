@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use datafusion::common::Result;
-use rocksdb::{DB, Direction, IteratorMode, Options};
+use rocksdb::{DB, Direction, IteratorMode, Options, WriteBatch};
 
 use super::MetaStore;
 
@@ -84,6 +84,24 @@ impl MetaStore for RocksDbMetaStore {
         }
         Ok(out)
     }
+
+    fn write_batch(&self, batch: Vec<(String, Option<Vec<u8>>)>) -> Result<()> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let mut wb = WriteBatch::default();
+        for (k, v) in batch {
+            match v {
+                Some(val) => wb.put(k.as_bytes(), val.as_slice()),
+                None => wb.delete(k.as_bytes()),
+            }
+        }
+        self.db.write(wb).map_err(|e| {
+            datafusion::common::DataFusionError::Execution(format!(
+                "stream catalog store write_batch: {e}"
+            ))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -117,6 +135,29 @@ mod tests {
 
         store.delete("catalog:stream_table:a").unwrap();
         assert!(store.get("catalog:stream_table:a").unwrap().is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_batch_put_and_delete() {
+        let dir: PathBuf =
+            std::env::temp_dir().join(format!("fs_stream_catalog_wb_{}", Uuid::new_v4()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let store = RocksDbMetaStore::open(&dir).expect("open");
+        store
+            .write_batch(vec![
+                ("k1".to_string(), Some(vec![1])),
+                ("k2".to_string(), Some(vec![2])),
+            ])
+            .unwrap();
+        assert_eq!(store.get("k1").unwrap(), Some(vec![1]));
+        assert_eq!(store.get("k2").unwrap(), Some(vec![2]));
+
+        store.write_batch(vec![("k1".to_string(), None)]).unwrap();
+        assert!(store.get("k1").unwrap().is_none());
+        assert_eq!(store.get("k2").unwrap(), Some(vec![2]));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

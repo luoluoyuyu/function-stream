@@ -19,9 +19,9 @@ use datafusion::common::{Result as DFResult, plan_datafusion_err, plan_err};
 use super::connector_options::ConnectorOptions;
 use super::constants::{bad_data_value, connection_format_value, framing_method_value};
 use super::formats::{
-    AvroFormat, BadData, DecimalEncoding, Format, Framing, JsonCompression, JsonFormat,
-    NewlineDelimitedFraming, ParquetCompression, ParquetFormat, ProtobufFormat, RawBytesFormat,
-    RawStringFormat, TimestampFormat,
+    AvroFormat, BadData, CsvFormat, DecimalEncoding, Format, Framing, JsonCompression, JsonFormat,
+    LanceFormat, NewlineDelimitedFraming, ParquetCompression, ParquetFormat, ProtobufFormat,
+    RawBytesFormat, RawStringFormat, TimestampFormat,
 };
 use super::with_option_keys as opt;
 
@@ -61,12 +61,14 @@ impl JsonFormat {
 
 impl Format {
     pub fn from_opts(opts: &mut ConnectorOptions) -> DFResult<Option<Self>> {
-        let Some(name) = opts.pull_opt_str(opt::FORMAT)? else {
+        let Some(name) = opts.peek_opt_str(opt::FORMAT)? else {
             return Ok(None);
         };
         let n = name.to_lowercase();
         match n.as_str() {
             connection_format_value::JSON => Ok(Some(Format::Json(JsonFormat::from_opts(opts)?))),
+            connection_format_value::CSV => Ok(Some(Format::Csv(CsvFormat {}))),
+            connection_format_value::LANCE => Ok(Some(Format::Lance(LanceFormat {}))),
             connection_format_value::DEBEZIUM_JSON => {
                 let mut j = JsonFormat::from_opts(opts)?;
                 j.debezium = true;

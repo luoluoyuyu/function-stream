@@ -10,11 +10,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::source_table::SourceTable;
 use crate::sql::analysis::rewrite_plan;
 use crate::sql::logical_node::remote_table::RemoteTableBoundaryNode;
 use crate::sql::logical_planner::optimizers::produce_optimized_plan;
 use crate::sql::schema::StreamSchemaProvider;
+use crate::sql::schema::catalog::ExternalTable;
 use crate::sql::types::{ProcessingMode, QualifiedField};
 use datafusion::arrow::datatypes::FieldRef;
 use datafusion::common::{Result, plan_err};
@@ -24,23 +24,22 @@ use protocol::function_stream_graph::ConnectorOp;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Represents all table types in the FunctionStream SQL catalog.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Table {
-    /// A lookup table backed by an external connector.
-    LookupTable(SourceTable),
-    /// A source/sink table backed by an external connector.
-    ConnectorTable(SourceTable),
-    /// A table defined by a query (CREATE VIEW / CREATE TABLE AS SELECT).
-    TableFromQuery {
+pub enum CatalogEntity {
+    /// Both payload variants are boxed so the enum is not padded to the largest field.
+    ExternalConnector(Box<ExternalTable>),
+    ComputedTable {
         name: String,
-        logical_plan: LogicalPlan,
+        logical_plan: Box<LogicalPlan>,
     },
 }
 
-impl Table {
-    /// Try to construct a Table from a CREATE TABLE or CREATE VIEW statement.
+impl CatalogEntity {
+    #[inline]
+    pub fn external(table: ExternalTable) -> Self {
+        Self::ExternalConnector(Box::new(table))
+    }
+
     pub fn try_from_statement(
         statement: &Statement,
         schema_provider: &StreamSchemaProvider,
@@ -69,11 +68,11 @@ impl Table {
                     resolved_schema: schema,
                     requires_materialization: true,
                 };
-                Ok(Some(Table::TableFromQuery {
+                Ok(Some(CatalogEntity::ComputedTable {
                     name: name.to_string(),
-                    logical_plan: LogicalPlan::Extension(Extension {
+                    logical_plan: Box::new(LogicalPlan::Extension(Extension {
                         node: Arc::new(remote),
-                    }),
+                    })),
                 }))
             }
             _ => Ok(None),
@@ -82,36 +81,25 @@ impl Table {
 
     pub fn name(&self) -> &str {
         match self {
-            Table::TableFromQuery { name, .. } => name.as_str(),
-            Table::ConnectorTable(c) | Table::LookupTable(c) => c.name(),
+            CatalogEntity::ComputedTable { name, .. } => name.as_str(),
+            CatalogEntity::ExternalConnector(e) => e.name(),
         }
     }
 
     pub fn get_fields(&self) -> Vec<FieldRef> {
         match self {
-            Table::ConnectorTable(SourceTable {
-                schema_specs,
-                inferred_fields,
-                ..
-            })
-            | Table::LookupTable(SourceTable {
-                schema_specs,
-                inferred_fields,
-                ..
-            }) => inferred_fields.clone().unwrap_or_else(|| {
-                schema_specs
-                    .iter()
-                    .map(|c| Arc::new(c.arrow_field().clone()))
-                    .collect()
-            }),
-            Table::TableFromQuery { logical_plan, .. } => {
+            CatalogEntity::ExternalConnector(e) => e.effective_fields(),
+            CatalogEntity::ComputedTable { logical_plan, .. } => {
                 logical_plan.schema().fields().iter().cloned().collect()
             }
         }
     }
 
     pub fn set_inferred_fields(&mut self, fields: Vec<QualifiedField>) -> Result<()> {
-        let Table::ConnectorTable(t) = self else {
+        let CatalogEntity::ExternalConnector(ext) = self else {
+            return Ok(());
+        };
+        let ExternalTable::Source(t) = ext.as_mut() else {
             return Ok(());
         };
 
@@ -139,14 +127,27 @@ impl Table {
 
     pub fn connector_op(&self) -> Result<ConnectorOp> {
         match self {
-            Table::ConnectorTable(c) | Table::LookupTable(c) => Ok(c.connector_op()),
-            Table::TableFromQuery { .. } => plan_err!("can't write to a query-defined table"),
+            CatalogEntity::ExternalConnector(e) => Ok(e.connector_op()),
+            CatalogEntity::ComputedTable { .. } => {
+                plan_err!("can't write to a query-defined table")
+            }
         }
     }
 
     pub fn partition_exprs(&self) -> Option<&Vec<datafusion::logical_expr::Expr>> {
+        let CatalogEntity::ExternalConnector(ext) = self else {
+            return None;
+        };
+        let ExternalTable::Sink(s) = ext.as_ref() else {
+            return None;
+        };
+        (*s.partition_exprs).as_ref()
+    }
+
+    #[inline]
+    pub fn as_external(&self) -> Option<&ExternalTable> {
         match self {
-            Table::ConnectorTable(c) => (*c.partition_exprs).as_ref(),
+            CatalogEntity::ExternalConnector(e) => Some(e.as_ref()),
             _ => None,
         }
     }

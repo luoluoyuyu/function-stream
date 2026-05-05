@@ -161,7 +161,7 @@ impl SourceDriver {
                 let b: CheckpointBarrier = barrier.clone().into();
                 let report = self.operator.snapshot_state(b, &mut self.ctx).await?;
                 self.dispatch_event(StreamEvent::Barrier(b)).await?;
-                pending_source_checkpoint = Some((b.epoch as u64, report));
+                pending_source_checkpoint = Some((b.epoch, report));
             }
             ControlCommand::Commit { epoch } => {
                 self.operator
@@ -186,7 +186,7 @@ impl SourceDriver {
         }
 
         if let Some((epoch, report)) = pending_source_checkpoint {
-            self.ctx.send_checkpoint_ack(epoch, report.payloads).await;
+            self.ctx.send_checkpoint_ack(epoch, report.infos).await;
         }
 
         Ok(stop)

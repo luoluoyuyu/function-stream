@@ -204,6 +204,7 @@ function-stream-<version>/
 | 文档                                                                     | 描述                       |
 |------------------------------------------------------------------------|--------------------------|
 | [Streaming SQL 使用指南](docs/streaming-sql-guide-zh.md)                   | 声明式 SQL 实时流处理指南         |
+| [Streaming SQL Source/Sink 文档](docs/streaming-sql/README-zh.md)          | Source/Sink 能力与参数速查         |
 | [连接器、格式与类型参考](docs/connectors-and-formats-zh.md)                       | 支持的 Source/Sink、格式与数据类型  |
 | [服务端配置与运维指南](docs/server-configuration-zh.md)                          | 服务端配置与运维操作              |
 | [Function 任务配置规范](docs/function-configuration-zh.md)        | 任务定义规范           |

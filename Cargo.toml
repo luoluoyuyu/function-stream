@@ -52,6 +52,8 @@ arrow-array = "55"
 arrow-ipc = "55"
 arrow-schema = { version = "55", features = ["serde"] }
 parquet = "55"
+object_store = { version = "0.12.5", features = ["aws"] }
+bytes = "1"
 futures = "0.3"
 serde_json_path = "0.7"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
@@ -63,6 +65,7 @@ itertools = "0.14"
 strum = { version = "0.26", features = ["derive"] }
 
 arrow-json = {version = '55.2.0'}
+apache-avro = "0.21"
 datafusion = {git = 'https://github.com/FunctionStream/datafusion', branch = '48.0.1/fs'}
 datafusion-common = {git = 'https://github.com/FunctionStream/datafusion', branch = '48.0.1/fs'}
 datafusion-execution = {git = 'https://github.com/FunctionStream/datafusion', branch = '48.0.1/fs'}
@@ -74,6 +77,9 @@ sqlparser = { git = "https://github.com/FunctionStream/sqlparser-rs", branch = "
 
 ahash = "0.8"
 governor = "0.8.0"
+lance = { version = "4.0.0", default-features = false, features = ["aws"] }
+arrow-array-lance = { package = "arrow-array", version = "57.3.0" }
+arrow-ipc-lance = { package = "arrow-ipc", version = "57.3.0" }
 
 [features]
 default = ["incremental-cache", "python"]

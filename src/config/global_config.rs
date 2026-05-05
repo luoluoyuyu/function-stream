@@ -25,6 +25,8 @@ pub const DEFAULT_STREAMING_RUNTIME_MEMORY_BYTES: u64 = 10 * 1024 * 1024;
 
 /// Default for [`StreamingConfig::operator_state_store_memory_bytes`] when unset. **5 MiB** per stateful operator cap.
 pub const DEFAULT_OPERATOR_STATE_STORE_MEMORY_BYTES: u64 = 5 * 1024 * 1024;
+/// Default sink in-memory buffer reservation. **64 MiB**.
+pub const DEFAULT_SINK_BUFFER_MEMORY_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StreamingConfig {

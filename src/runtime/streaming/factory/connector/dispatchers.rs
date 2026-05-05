@@ -12,19 +12,30 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
+use prost::Message;
+use protocol::function_stream_graph::ConnectorOp;
 
 use crate::runtime::streaming::api::operator::ConstructedOperator;
 use crate::runtime::streaming::factory::global::Registry;
 use crate::runtime::streaming::factory::operator_constructor::OperatorConstructor;
+use crate::sql::common::constants::connector_type;
 
-use super::kafka::KafkaConnectorDispatcher;
+use super::{
+    DeltaSinkDispatcher, FilesystemSinkDispatcher, IcebergSinkDispatcher, LanceDbSinkDispatcher,
+    S3SinkDispatcher, kafka::KafkaConnectorDispatcher,
+};
 
 pub struct ConnectorSourceDispatcher;
 
 impl OperatorConstructor for ConnectorSourceDispatcher {
     fn with_config(&self, config: &[u8], registry: Arc<Registry>) -> Result<ConstructedOperator> {
-        KafkaConnectorDispatcher.with_config(config, registry)
+        let op = ConnectorOp::decode(config)
+            .context("failed decoding connector op for source dispatch")?;
+        match op.connector.to_ascii_lowercase().as_str() {
+            connector_type::KAFKA => KafkaConnectorDispatcher.with_config(config, registry),
+            _ => bail!("unsupported source connector '{}'", op.connector),
+        }
     }
 }
 
@@ -32,6 +43,16 @@ pub struct ConnectorSinkDispatcher;
 
 impl OperatorConstructor for ConnectorSinkDispatcher {
     fn with_config(&self, config: &[u8], registry: Arc<Registry>) -> Result<ConstructedOperator> {
-        KafkaConnectorDispatcher.with_config(config, registry)
+        let op = ConnectorOp::decode(config)
+            .context("failed decoding connector op for sink dispatch")?;
+        match op.connector.to_ascii_lowercase().as_str() {
+            connector_type::KAFKA => KafkaConnectorDispatcher.with_config(config, registry),
+            connector_type::FILESYSTEM => FilesystemSinkDispatcher.with_config(config, registry),
+            connector_type::DELTA => DeltaSinkDispatcher.with_config(config, registry),
+            connector_type::ICEBERG => IcebergSinkDispatcher.with_config(config, registry),
+            connector_type::S3 => S3SinkDispatcher.with_config(config, registry),
+            "lancedb" => LanceDbSinkDispatcher.with_config(config, registry),
+            _ => bail!("unsupported sink connector '{}'", op.connector),
+        }
     }
 }

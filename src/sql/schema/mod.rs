@@ -10,30 +10,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod catalog_ddl;
+pub mod catalog;
 pub mod column_descriptor;
 pub mod connection_type;
-pub mod connector_config;
 pub mod data_encoding_format;
-pub mod kafka_operator_config;
-pub mod schema_context;
+pub mod introspection;
 pub mod schema_provider;
-pub mod source_table;
 pub mod table;
-pub mod table_execution_unit;
 pub mod table_role;
 pub mod temporal_pipeline_config;
 pub mod utils;
 
-pub use catalog_ddl::{
+pub use catalog::{ExternalTable, LookupTable, SinkTable, SourceTable};
+pub use column_descriptor::ColumnDescriptor;
+pub use introspection::{
     catalog_table_row_detail, schema_columns_one_line, show_create_catalog_table,
 };
-pub use column_descriptor::ColumnDescriptor;
-pub use connection_type::ConnectionType;
-pub use connector_config::ConnectorConfig;
-pub use source_table::SourceTable;
-
-/// Back-compat alias for [`SourceTable`].
-pub type ConnectorTable = SourceTable;
 pub use schema_provider::{ObjectName, StreamPlanningContext, StreamSchemaProvider, StreamTable};
-pub use table::Table;
+pub use table::CatalogEntity;

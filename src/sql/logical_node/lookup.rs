@@ -10,7 +10,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
@@ -22,9 +21,7 @@ use datafusion_proto::physical_plan::to_proto::serialize_physical_expr;
 use prost::Message;
 
 use protocol::function_stream_graph;
-use protocol::function_stream_graph::{
-    ConnectorOp, GenericConnectorConfig, LookupJoinCondition, LookupJoinOperator,
-};
+use protocol::function_stream_graph::{ConnectorOp, LookupJoinCondition, LookupJoinOperator};
 
 use crate::multifield_partial_ord;
 use crate::sql::common::constants::extension_node;
@@ -32,7 +29,7 @@ use crate::sql::common::{FsSchema, FsSchemaRef};
 use crate::sql::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::sql::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::sql::logical_planner::planner::{NamedNode, Planner};
-use crate::sql::schema::SourceTable;
+use crate::sql::schema::LookupTable;
 use crate::sql::schema::utils::add_timestamp_field_arrow;
 
 pub const DICTIONARY_SOURCE_NODE_NAME: &str = extension_node::REFERENCE_TABLE_SOURCE;
@@ -40,7 +37,7 @@ pub const STREAM_DICTIONARY_JOIN_NODE_NAME: &str = extension_node::STREAM_REFERE
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReferenceTableSourceNode {
-    pub(crate) source_definition: SourceTable,
+    pub(crate) source_definition: LookupTable,
     pub(crate) resolved_schema: DFSchemaRef,
 }
 
@@ -85,7 +82,7 @@ impl UserDefinedLogicalNodeCore for ReferenceTableSourceNode {
 pub struct StreamReferenceJoinNode {
     pub(crate) upstream_stream_plan: LogicalPlan,
     pub(crate) output_schema: DFSchemaRef,
-    pub(crate) external_dictionary: SourceTable,
+    pub(crate) external_dictionary: LookupTable,
     pub(crate) equijoin_conditions: Vec<(Expr, Column)>,
     pub(crate) post_join_filter: Option<Expr>,
     pub(crate) namespace_alias: Option<TableReference>,
@@ -140,13 +137,6 @@ impl StreamReferenceJoinNode {
         let lookup_fs_schema =
             FsSchema::from_schema_unkeyed(add_timestamp_field_arrow(dictionary_physical_schema))?;
 
-        let properties: HashMap<String, String> = self
-            .external_dictionary
-            .catalog_with_options
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
         Ok(LookupJoinOperator {
             input_schema: Some(internal_input_schema.into()),
             lookup_schema: Some(lookup_fs_schema.clone().into()),
@@ -155,11 +145,7 @@ impl StreamReferenceJoinNode {
                 fs_schema: Some(lookup_fs_schema.into()),
                 name: self.external_dictionary.table_identifier.clone(),
                 description: self.external_dictionary.description.clone(),
-                config: Some(
-                    protocol::function_stream_graph::connector_op::Config::Generic(
-                        GenericConnectorConfig { properties },
-                    ),
-                ),
+                config: Some(self.external_dictionary.connector_config.to_proto_config()),
             }),
             key_exprs: self.compile_join_conditions(planner)?,
             join_type: self.map_api_join_type()?,
