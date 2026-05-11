@@ -1,0 +1,8 @@
+[package]
+name = "function-stream-streaming-runtime"
+version = "0.6.0"
+edition = "2024"
+
+[lib]
+name = "function_stream_streaming_runtime"
+path = "src/lib.rs"

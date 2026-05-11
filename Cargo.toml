@@ -3,6 +3,17 @@ members = [
     ".",
     "protocol",
     "cli/cli",
+    "src/catalog",
+    "src/catalog_storage",
+    "src/common",
+    "src/config",
+    "src/coordinator",
+    "src/job_manager",
+    "src/logger",
+    "src/servicer",
+    "src/sqlparser",
+    "src/streaming_runtime",
+    "src/wasm_runtime",
 ]
 
 [package]
@@ -35,6 +46,8 @@ tonic = { version = "0.12", features = ["default"] }
 async-trait = "0.1"
 num_cpus = "1.0"
 protocol = { path = "./protocol" }
+function-stream-config = { path = "src/config" }
+function-stream-logger = { path = "src/logger" }
 prost = "0.13"
 rdkafka = { version = "0.38", features = ["cmake-build", "ssl", "gssapi", "curl"] }
 crossbeam-channel = "0.5"

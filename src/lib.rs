@@ -14,10 +14,12 @@
 
 #![allow(dead_code)]
 
-pub mod config;
+pub use function_stream_config as config;
+#[path = "coordinator/src/legacy/mod.rs"]
 pub mod coordinator;
-pub mod logging;
+pub use function_stream_logger as logging;
 pub mod runtime;
+#[path = "servicer/src/legacy/mod.rs"]
 pub mod server;
 pub mod sql;
 pub mod storage;

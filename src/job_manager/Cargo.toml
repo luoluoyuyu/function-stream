@@ -1,0 +1,8 @@
+[package]
+name = "function-stream-job-manager"
+version = "0.6.0"
+edition = "2024"
+
+[lib]
+name = "function_stream_job_manager"
+path = "src/lib.rs"

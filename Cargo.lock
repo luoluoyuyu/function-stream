@@ -3800,6 +3800,8 @@ dependencies = [
  "datafusion-expr 48.0.1",
  "datafusion-physical-expr 48.0.1",
  "datafusion-proto",
+ "function-stream-config",
+ "function-stream-logger",
  "futures",
  "governor",
  "itertools 0.14.0",
@@ -3839,6 +3841,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "function-stream-catalog"
+version = "0.6.0"
+dependencies = [
+ "protocol",
+]
+
+[[package]]
+name = "function-stream-catalog-storage"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "function-stream-catalog",
+ "parking_lot",
+ "rocksdb",
+]
+
+[[package]]
 name = "function-stream-cli"
 version = "0.1.0"
 dependencies = [
@@ -3852,6 +3871,54 @@ dependencies = [
  "tokio",
  "tonic",
 ]
+
+[[package]]
+name = "function-stream-common"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-config"
+version = "0.6.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+ "uuid",
+]
+
+[[package]]
+name = "function-stream-coordinator"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-job-manager"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-logger"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "function-stream-config",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "function-stream-servicer"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-sqlparser"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-streaming-runtime"
+version = "0.6.0"
+
+[[package]]
+name = "function-stream-wasm-runtime"
+version = "0.6.0"
 
 [[package]]
 name = "funty"

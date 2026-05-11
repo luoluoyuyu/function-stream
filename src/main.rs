@@ -12,10 +12,12 @@
 
 #![allow(dead_code)]
 
-mod config;
+pub use function_stream_config as config;
+#[path = "coordinator/src/legacy/mod.rs"]
 mod coordinator;
-mod logging;
+pub use function_stream_logger as logging;
 mod runtime;
+#[path = "servicer/src/legacy/mod.rs"]
 mod server;
 mod sql;
 mod storage;
@@ -144,7 +146,7 @@ fn setup_environment() -> Result<config::GlobalConfig> {
         config::GlobalConfig::default()
     };
 
-    logging::init_logging(&config.logging).context("Logging initialization failed")?;
+    function_stream_logger::init_logging(&config.logging).context("Logging initialization failed")?;
 
     log::debug!(
         "Environment initialized. Data: {}, Conf: {}",
