@@ -146,7 +146,8 @@ fn setup_environment() -> Result<config::GlobalConfig> {
         config::GlobalConfig::default()
     };
 
-    function_stream_logger::init_logging(&config.logging).context("Logging initialization failed")?;
+    function_stream_logger::init_logging(&config.logging)
+        .context("Logging initialization failed")?;
 
     log::debug!(
         "Environment initialized. Data: {}, Conf: {}",

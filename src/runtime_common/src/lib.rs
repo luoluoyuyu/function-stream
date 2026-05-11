@@ -10,12 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Streaming execution runtime.
-//!
-//! The streaming engine and shared runtime helpers (`streaming/`, `util/`) are
-//! implemented under [`src/streaming`] and [`src/util`] in this package. They are
-//! currently **compiled as part of the `function-stream` crate** via `#[path]` in
-//! `src/runtime/mod.rs`, so in-tree paths like `crate::sql`
-//! keep working until SQL is split into its own crate.
+//! Shared runtime building blocks (task lifecycle, memory pool) used by streaming and WASM.
 
-pub const CRATE_NAME: &str = "function-stream-streaming-runtime";
+pub mod common;
+pub mod memory;

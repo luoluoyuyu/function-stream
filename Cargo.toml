@@ -10,6 +10,7 @@ members = [
     "src/coordinator",
     "src/job_manager",
     "src/logger",
+    "src/runtime_common",
     "src/servicer",
     "src/sqlparser",
     "src/streaming_runtime",
@@ -48,6 +49,7 @@ num_cpus = "1.0"
 protocol = { path = "./protocol" }
 function-stream-config = { path = "src/config" }
 function-stream-logger = { path = "src/logger" }
+function-stream-runtime-common = { path = "src/runtime_common" }
 prost = "0.13"
 rdkafka = { version = "0.38", features = ["cmake-build", "ssl", "gssapi", "curl"] }
 crossbeam-channel = "0.5"

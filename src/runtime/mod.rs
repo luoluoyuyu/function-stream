@@ -12,10 +12,18 @@
 
 // Runtime module
 
-pub mod common;
-pub mod memory;
+pub use function_stream_runtime_common::{common, memory};
+
+// Implementation sources live under `src/streaming_runtime/src/{streaming,util}/` and are
+// compiled here so `crate::sql` / `crate::runtime::memory` paths keep resolving.
+#[path = "../streaming_runtime/src/streaming/mod.rs"]
 pub mod streaming;
+
+#[path = "../streaming_runtime/src/util/mod.rs"]
 pub mod util;
+
+// WASM runtime sources live under `src/wasm_runtime/src/wasm/`; compiled here for `crate::` paths.
+#[path = "../wasm_runtime/src/wasm/mod.rs"]
 pub mod wasm;
 
 pub use wasm::input;

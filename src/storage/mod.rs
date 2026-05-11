@@ -14,8 +14,16 @@ use std::sync::Arc;
 
 use anyhow::Context;
 
+// State backend sources live under `src/wasm_runtime/src/state_backend/`; compiled here for `crate::storage::state_backend`.
+#[path = "../wasm_runtime/src/state_backend/mod.rs"]
 pub mod state_backend;
+
+// Stream catalog + task storage sources under `src/catalog_storage/src/{stream_catalog,task}/`;
+// compiled here so `crate::storage::stream_catalog` / `crate::storage::task` keep resolving.
+#[path = "../catalog_storage/src/stream_catalog/mod.rs"]
 pub mod stream_catalog;
+
+#[path = "../catalog_storage/src/task/mod.rs"]
 pub mod task;
 
 /// Install the process-global [`stream_catalog::CatalogManager`] from configuration.

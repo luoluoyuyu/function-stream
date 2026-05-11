@@ -3802,6 +3802,7 @@ dependencies = [
  "datafusion-proto",
  "function-stream-config",
  "function-stream-logger",
+ "function-stream-runtime-common",
  "futures",
  "governor",
  "itertools 0.14.0",
@@ -3902,6 +3903,17 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "function-stream-runtime-common"
+version = "0.6.0"
+dependencies = [
+ "arrow-array 55.2.0",
+ "parking_lot",
+ "serde",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

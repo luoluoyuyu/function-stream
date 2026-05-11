@@ -26,7 +26,7 @@ use protocol::service::{
 
 use crate::coordinator::{
     Coordinator, CreateFunction, CreatePythonFunction, DataSet, DropFunction, PythonModule,
-    ShowFunctions, ShowFunctionsResult, StartFunction, Statement, StopFunction,
+    ShowFunctions, ShowFunctionsResult, StartFunction, Statement, StopFunction, classify_statement,
 };
 use crate::sql::parse::parse_sql;
 
@@ -135,9 +135,17 @@ impl FunctionStreamService for FunctionStreamServiceImpl {
         let timer = Instant::now();
         let req = request.into_inner();
 
-        let statements = parse_sql(&req.sql).map_err(|e| {
+        let ast = parse_sql(&req.sql).map_err(|e| {
             let detail = e.to_string();
             warn!("SQL parse rejection: {}", detail);
+            Status::invalid_argument(detail)
+        })?;
+
+        let statements: Result<Vec<Box<dyn Statement>>, _> =
+            ast.into_iter().map(classify_statement).collect();
+        let statements = statements.map_err(|e| {
+            let detail = e.to_string();
+            warn!("SQL classification rejection: {}", detail);
             Status::invalid_argument(detail)
         })?;
 

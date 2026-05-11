@@ -13,6 +13,7 @@
 mod analyze;
 #[allow(clippy::module_inception)]
 mod coordinator;
+mod sql_classify;
 mod dataset;
 mod execution;
 mod execution_context;
@@ -24,6 +25,7 @@ mod tool;
 
 pub use coordinator::Coordinator;
 pub use dataset::{DataSet, ShowFunctionsResult};
+pub use sql_classify::classify_statement;
 pub use statement::{
     CreateFunction, CreatePythonFunction, CreateTable, DropFunction, DropStreamingTableStatement,
     DropTableStatement, PythonModule, ShowCatalogTables, ShowCreateStreamingTable, ShowCreateTable,
