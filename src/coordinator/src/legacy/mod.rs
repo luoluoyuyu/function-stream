@@ -13,13 +13,13 @@
 mod analyze;
 #[allow(clippy::module_inception)]
 mod coordinator;
-mod sql_classify;
 mod dataset;
 mod execution;
 mod execution_context;
 mod plan;
 mod runtime_context;
 mod statement;
+mod sql_classify;
 mod streaming_table_options;
 mod tool;
 

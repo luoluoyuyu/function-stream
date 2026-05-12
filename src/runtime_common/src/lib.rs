@@ -14,3 +14,4 @@
 
 pub mod common;
 pub mod memory;
+pub mod streaming_protocol;

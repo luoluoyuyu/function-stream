@@ -14,6 +14,7 @@ members = [
     "src/servicer",
     "src/sqlparser",
     "src/streaming_runtime",
+    "src/streaming_planner",
     "src/wasm_runtime",
 ]
 
@@ -50,6 +51,7 @@ protocol = { path = "./protocol" }
 function-stream-config = { path = "src/config" }
 function-stream-logger = { path = "src/logger" }
 function-stream-runtime-common = { path = "src/runtime_common" }
+function-stream-streaming-planner = { path = "src/streaming_planner" }
 prost = "0.13"
 rdkafka = { version = "0.38", features = ["cmake-build", "ssl", "gssapi", "curl"] }
 crossbeam-channel = "0.5"

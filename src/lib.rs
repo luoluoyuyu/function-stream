@@ -21,5 +21,5 @@ pub use function_stream_logger as logging;
 pub mod runtime;
 #[path = "servicer/src/legacy/mod.rs"]
 pub mod server;
-pub mod sql;
+pub use function_stream_streaming_planner as sql;
 pub mod storage;

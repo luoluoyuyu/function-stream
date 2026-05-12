@@ -19,7 +19,7 @@ pub use function_stream_logger as logging;
 mod runtime;
 #[path = "servicer/src/legacy/mod.rs"]
 mod server;
-mod sql;
+pub use function_stream_streaming_planner as sql;
 mod storage;
 
 use anyhow::{Context, Result};

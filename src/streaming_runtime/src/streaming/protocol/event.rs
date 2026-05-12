@@ -10,28 +10,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bincode::{Decode, Encode};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use arrow_array::RecordBatch;
 
 use crate::runtime::memory::MemoryTicket;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
-pub enum Watermark {
-    EventTime(SystemTime),
-    Idle,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
-pub struct CheckpointBarrier {
-    pub epoch: u64,
-    pub min_epoch: u64,
-    pub timestamp: SystemTime,
-    pub then_stop: bool,
-}
+pub use function_stream_runtime_common::streaming_protocol::{
+    CheckpointBarrier, Watermark, merge_watermarks, watermark_strictly_advances,
+};
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
@@ -68,79 +55,5 @@ impl TrackedEvent {
             event,
             _ticket: None,
         }
-    }
-}
-
-pub fn merge_watermarks(per_input: &[Option<Watermark>]) -> Option<Watermark> {
-    if per_input.iter().any(|w| w.is_none()) {
-        return None;
-    }
-
-    let mut min_event: Option<SystemTime> = None;
-    let mut all_idle = true;
-
-    for w in per_input.iter().flatten() {
-        match w {
-            Watermark::Idle => {}
-            Watermark::EventTime(t) => {
-                all_idle = false;
-                min_event = Some(match min_event {
-                    None => *t,
-                    Some(m) => m.min(*t),
-                });
-            }
-        }
-    }
-
-    if all_idle {
-        Some(Watermark::Idle)
-    } else {
-        Some(Watermark::EventTime(min_event.expect(
-            "non-idle alignment must have at least one EventTime",
-        )))
-    }
-}
-
-pub fn watermark_strictly_advances(new: Watermark, previous: Option<Watermark>) -> bool {
-    match previous {
-        None => true,
-        Some(prev) => match (new, prev) {
-            (Watermark::EventTime(tn), Watermark::EventTime(tp)) => tn > tp,
-            (Watermark::Idle, Watermark::Idle) => false,
-            (Watermark::Idle, Watermark::EventTime(_)) => true,
-            (Watermark::EventTime(_), Watermark::Idle) => true,
-        },
-    }
-}
-
-#[cfg(test)]
-mod watermark_tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn merge_waits_for_all_channels() {
-        let wms = vec![Some(Watermark::EventTime(SystemTime::UNIX_EPOCH)), None];
-        assert!(merge_watermarks(&wms).is_none());
-    }
-
-    #[test]
-    fn merge_min_event_time_ignores_idle() {
-        let t1 = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
-        let t2 = SystemTime::UNIX_EPOCH + Duration::from_secs(5);
-        let wms = vec![Some(Watermark::EventTime(t1)), Some(Watermark::Idle)];
-        assert_eq!(merge_watermarks(&wms), Some(Watermark::EventTime(t1)));
-
-        let wms = vec![
-            Some(Watermark::EventTime(t1)),
-            Some(Watermark::EventTime(t2)),
-        ];
-        assert_eq!(merge_watermarks(&wms), Some(Watermark::EventTime(t2)));
-    }
-
-    #[test]
-    fn merge_all_idle() {
-        let wms = vec![Some(Watermark::Idle), Some(Watermark::Idle)];
-        assert_eq!(merge_watermarks(&wms), Some(Watermark::Idle));
     }
 }

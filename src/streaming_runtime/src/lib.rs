@@ -15,7 +15,6 @@
 //! The streaming engine and shared runtime helpers (`streaming/`, `util/`) are
 //! implemented under [`src/streaming`] and [`src/util`] in this package. They are
 //! currently **compiled as part of the `function-stream` crate** via `#[path]` in
-//! `src/runtime/mod.rs`, so in-tree paths like `crate::sql`
-//! keep working until SQL is split into its own crate.
+//! `src/runtime.rs`, sharing the root `crate::sql` name (re-exported streaming planner crate).
 
 pub const CRATE_NAME: &str = "function-stream-streaming-runtime";

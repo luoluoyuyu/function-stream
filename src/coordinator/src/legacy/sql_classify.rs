@@ -15,13 +15,13 @@
 
 use std::collections::HashMap;
 
-use datafusion::common::{Result, plan_err};
+use datafusion::common::{plan_err, Result};
 use datafusion::error::DataFusionError;
 use datafusion::sql::sqlparser::ast::{
     ObjectType, ShowCreateObject, SqlOption, Statement as DFStatement,
 };
 
-use super::statement::{
+use super::{
     CreateFunction, CreateTable, DropFunction, DropStreamingTableStatement, DropTableStatement,
     ShowCatalogTables, ShowCreateStreamingTable, ShowCreateTable, ShowFunctions,
     ShowStreamingTables, StartFunction, Statement, StopFunction, StreamingTableStatement,
@@ -298,8 +298,7 @@ mod tests {
 
     #[test]
     fn test_insert_not_supported() {
-        let mut stmts =
-            parse_sql("INSERT INTO sink SELECT * FROM src").unwrap();
+        let mut stmts = parse_sql("INSERT INTO sink SELECT * FROM src").unwrap();
         let err = classify_statement(stmts.remove(0)).unwrap_err();
         let msg = err.to_string();
         assert!(
