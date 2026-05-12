@@ -18,14 +18,14 @@ use prost::Message;
 use protocol::function_stream_graph::ConnectorOp;
 use protocol::function_stream_graph::connector_op::Config;
 
-use crate::runtime::streaming::api::operator::ConstructedOperator;
-use crate::runtime::streaming::factory::connector::sink_props_codec::{
+use crate::streaming::api::operator::ConstructedOperator;
+use crate::streaming::factory::connector::sink_props_codec::{
     apply_common_sink_fields, normalized_props, parse_sink_memory_bytes,
 };
-use crate::runtime::streaming::factory::global::Registry;
-use crate::runtime::streaming::factory::operator_constructor::OperatorConstructor;
-use crate::runtime::streaming::operators::sink::delta::{DeltaFormat, DeltaSinkOperator};
-use crate::runtime::streaming::operators::sink::filesystem::compression_from_str;
+use crate::streaming::factory::global::Registry;
+use crate::streaming::factory::operator_constructor::OperatorConstructor;
+use crate::streaming::operators::sink::delta::{DeltaFormat, DeltaSinkOperator};
+use crate::streaming::operators::sink::filesystem::compression_from_str;
 use crate::sql::common::constants::connection_format_value;
 use crate::sql::common::with_option_keys as opt;
 

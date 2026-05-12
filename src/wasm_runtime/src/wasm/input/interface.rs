@@ -10,10 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::wasm::buffer_and_event::BufferOrEvent;
-use crate::runtime::wasm::taskexecutor::InitContext;
+use crate::wasm::buffer_and_event::BufferOrEvent;
+use crate::wasm::taskexecutor::InitContext;
 
-pub use crate::runtime::common::ComponentState as InputState;
+pub use crate::common::ComponentState as InputState;
 
 pub trait Input: Send + Sync {
     fn init_with_context(

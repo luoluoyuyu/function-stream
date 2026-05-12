@@ -16,9 +16,9 @@ use anyhow::{Context, Result, bail};
 use prost::Message;
 use protocol::function_stream_graph::ConnectorOp;
 
-use crate::runtime::streaming::api::operator::ConstructedOperator;
-use crate::runtime::streaming::factory::global::Registry;
-use crate::runtime::streaming::factory::operator_constructor::OperatorConstructor;
+use crate::streaming::api::operator::ConstructedOperator;
+use crate::streaming::factory::global::Registry;
+use crate::streaming::factory::operator_constructor::OperatorConstructor;
 use crate::sql::common::constants::connector_type;
 
 use super::{

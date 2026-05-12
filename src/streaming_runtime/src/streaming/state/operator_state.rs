@@ -13,7 +13,7 @@
 use super::error::{Result, StateEngineError};
 use super::io_manager::{CompactJob, IoManager, SpillJob};
 use super::metrics::StateMetricsCollector;
-use crate::runtime::memory::{MemoryBlock, MemoryTicket};
+use crate::memory::{MemoryBlock, MemoryTicket};
 use arrow_array::builder::{BinaryBuilder, BooleanBuilder, UInt64Builder};
 use arrow_array::{Array, BinaryArray, RecordBatch, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
@@ -813,7 +813,7 @@ mod tests {
     use super::super::io_manager::IoPool;
     use super::super::metrics::NoopMetricsCollector;
     use super::*;
-    use crate::runtime::memory::{MemoryBlock, MemoryPool, global_memory_pool};
+    use crate::memory::{MemoryBlock, MemoryPool, global_memory_pool};
     use arrow_array::Int64Array;
     use tempfile::TempDir;
 
@@ -836,7 +836,7 @@ mod tests {
     const TEST_OPERATOR_MEMORY: u64 = 2 * 1024 * 1024;
 
     fn ensure_global_memory_pool() {
-        use crate::runtime::memory::{init_global_memory_pool, try_global_memory_pool};
+        use crate::memory::{init_global_memory_pool, try_global_memory_pool};
         use std::sync::Once;
         static INIT: Once = Once::new();
         INIT.call_once(|| {

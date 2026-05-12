@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::storage::state_backend::error::BackendError;
-use crate::storage::state_backend::store::{StateIterator, StateStore};
+use crate::state_backend::error::BackendError;
+use crate::state_backend::store::{StateIterator, StateStore};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -94,7 +94,7 @@ impl StateStore for MemoryStateStore {
         user_key: Vec<u8>,
         value: Vec<u8>,
     ) -> Result<(), BackendError> {
-        let key_bytes = crate::storage::state_backend::key_builder::build_key(
+        let key_bytes = crate::state_backend::key_builder::build_key(
             &key_group, &key, &namespace, &user_key,
         );
 

@@ -31,11 +31,11 @@ use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::source::{
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::source::{
     SourceCheckpointReport, SourceEvent, SourceOffset, SourceOperator,
 };
-use crate::runtime::streaming::format::{BadDataPolicy, DataDeserializer, Format};
+use crate::streaming::format::{BadDataPolicy, DataDeserializer, Format};
 use crate::sql::common::fs_schema::FieldValueType;
 use crate::sql::common::{CheckpointBarrier, MetadataField};
 

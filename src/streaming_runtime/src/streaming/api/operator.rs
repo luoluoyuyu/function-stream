@@ -10,9 +10,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::source::SourceOperator;
-use crate::runtime::streaming::protocol::event::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::source::SourceOperator;
+use crate::streaming::protocol::event::StreamOutput;
 use crate::sql::common::{CheckpointBarrier, Watermark};
 use arrow_array::RecordBatch;
 use async_trait::async_trait;

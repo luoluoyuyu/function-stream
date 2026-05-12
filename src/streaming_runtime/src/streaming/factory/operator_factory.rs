@@ -11,13 +11,13 @@
 // limitations under the License.
 
 use super::operator_constructor::OperatorConstructor;
-use crate::runtime::streaming::api::operator::ConstructedOperator;
-use crate::runtime::streaming::factory::connector::{
+use crate::streaming::api::operator::ConstructedOperator;
+use crate::streaming::factory::connector::{
     ConnectorSinkDispatcher, ConnectorSourceDispatcher,
 };
-use crate::runtime::streaming::factory::global::Registry;
-use crate::runtime::streaming::operators::grouping::IncrementalAggregatingConstructor;
-use crate::runtime::streaming::operators::joins::{
+use crate::streaming::factory::global::Registry;
+use crate::streaming::operators::grouping::IncrementalAggregatingConstructor;
+use crate::streaming::operators::joins::{
     InstantJoinConstructor, JoinWithExpirationConstructor,
 };
 use anyhow::{Result, anyhow};
@@ -26,12 +26,12 @@ use protocol::function_stream_graph::ProjectionOperator as ProjectionOperatorPro
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::runtime::streaming::operators::watermark::WatermarkGeneratorConstructor;
-use crate::runtime::streaming::operators::windows::{
+use crate::streaming::operators::watermark::WatermarkGeneratorConstructor;
+use crate::streaming::operators::windows::{
     SessionAggregatingWindowConstructor, SlidingAggregatingWindowConstructor,
     TumblingAggregateWindowConstructor, WindowFunctionConstructor,
 };
-use crate::runtime::streaming::operators::{
+use crate::streaming::operators::{
     KeyExecutionOperator, ProjectionOperator, StatelessPhysicalExecutor, ValueExecutionOperator,
 };
 use protocol::function_stream_graph::{
@@ -125,7 +125,7 @@ impl OperatorFactory {
         );
         self.register_named(OperatorName::ConnectorSink, Box::new(ConnectorSinkBridge));
 
-        crate::runtime::streaming::factory::register_kafka_connector_plugins(self);
+        crate::streaming::factory::register_kafka_connector_plugins(self);
     }
 }
 

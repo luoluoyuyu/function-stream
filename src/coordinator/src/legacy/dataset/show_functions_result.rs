@@ -16,7 +16,7 @@ use arrow_array::{RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 
 use super::DataSet;
-use crate::storage::task::FunctionInfo;
+use crate::task::FunctionInfo;
 
 #[derive(Clone, Debug)]
 pub struct ShowFunctionsResult {

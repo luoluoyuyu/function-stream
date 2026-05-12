@@ -26,9 +26,9 @@ use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use tracing::{info, warn};
 
-use crate::runtime::streaming::StreamOutput;
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{Collector, Operator};
+use crate::streaming::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
 use crate::sql::common::constants::factory_operator_name;
 use crate::sql::common::with_option_keys as opt;
 use crate::sql::common::{CheckpointBarrier, Watermark};

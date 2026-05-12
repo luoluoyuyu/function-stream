@@ -14,11 +14,11 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{Instant, sleep};
 use tracing::{Instrument, info, info_span, warn};
 
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::source::{SourceCheckpointReport, SourceEvent, SourceOperator};
-use crate::runtime::streaming::error::RunError;
-use crate::runtime::streaming::execution::OperatorDrive;
-use crate::runtime::streaming::protocol::{
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::source::{SourceCheckpointReport, SourceEvent, SourceOperator};
+use crate::streaming::error::RunError;
+use crate::streaming::execution::OperatorDrive;
+use crate::streaming::protocol::{
     control::ControlCommand,
     event::{StreamEvent, TrackedEvent},
 };

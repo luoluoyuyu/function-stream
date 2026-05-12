@@ -10,20 +10,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Persistent / catalog-related modules compiled into the root crate.
-// Paths are relative to `src/` (this file lives at `src/storage.rs`).
+// Library crate for function-stream
+
+#![allow(dead_code)]
 
 use std::sync::Arc;
 
 use anyhow::Context;
 
-#[path = "wasm_runtime/src/state_backend/mod.rs"]
+pub use function_stream_config as config;
+#[path = "../../coordinator/src/legacy/mod.rs"]
+pub mod coordinator;
+pub use function_stream_logger as logging;
+
+pub use function_stream_runtime_common::{common, memory};
+
+#[path = "../../streaming_runtime/src/streaming/mod.rs"]
+pub mod streaming;
+
+#[path = "../../streaming_runtime/src/util/mod.rs"]
+pub mod util;
+
+#[path = "../../wasm_runtime/src/wasm/mod.rs"]
+pub mod wasm;
+
+pub use wasm::{input, output, processor};
+
+#[path = "../../wasm_runtime/src/state_backend/mod.rs"]
 pub mod state_backend;
 
-#[path = "catalog_storage/src/stream_catalog/mod.rs"]
+#[path = "../../catalog_storage/src/stream_catalog/mod.rs"]
 pub mod stream_catalog;
 
-#[path = "catalog_storage/src/task/mod.rs"]
+#[path = "../../catalog_storage/src/task/mod.rs"]
 pub mod task;
 
 /// Install the process-global [`stream_catalog::CatalogManager`] from configuration.
@@ -59,3 +78,7 @@ pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow
 
     CatalogManager::init_global(store).context("Stream catalog (CatalogManager) global init failed")
 }
+
+#[path = "../../servicer/src/legacy/mod.rs"]
+pub mod server;
+pub use function_stream_streaming_planner as sql;

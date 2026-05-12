@@ -13,10 +13,10 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{Collector, Operator};
-use crate::runtime::streaming::error::RunError;
-use crate::runtime::streaming::protocol::{
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
+use crate::streaming::error::RunError;
+use crate::streaming::protocol::{
     control::{ControlCommand, StopMode},
     event::{StreamEvent, StreamOutput, TrackedEvent},
 };

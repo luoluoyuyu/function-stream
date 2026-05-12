@@ -19,11 +19,11 @@ use arrow_array::RecordBatch;
 use protocol::storage::SourceCheckpointInfo;
 use tokio::sync::mpsc;
 
-use crate::runtime::memory::{MemoryBlock, MemoryPool, get_array_memory_size};
-use crate::runtime::streaming::network::endpoint::PhysicalSender;
-use crate::runtime::streaming::protocol::control::JobMasterEvent;
-use crate::runtime::streaming::protocol::event::{StreamEvent, TrackedEvent};
-use crate::runtime::streaming::state::IoManager;
+use crate::memory::{MemoryBlock, MemoryPool, get_array_memory_size};
+use crate::streaming::network::endpoint::PhysicalSender;
+use crate::streaming::protocol::control::JobMasterEvent;
+use crate::streaming::protocol::event::{StreamEvent, TrackedEvent};
+use crate::streaming::state::IoManager;
 
 #[derive(Debug, Clone)]
 pub struct TaskContextConfig {

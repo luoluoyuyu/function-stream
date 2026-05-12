@@ -1,7 +1,7 @@
 [package]
 name = "function-stream-streaming-planner"
-version = "0.6.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [lib]
 name = "function_stream_streaming_planner"

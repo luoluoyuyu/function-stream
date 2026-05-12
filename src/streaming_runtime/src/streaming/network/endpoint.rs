@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::streaming::protocol::event::StreamEvent;
-use crate::runtime::streaming::protocol::event::TrackedEvent;
+use crate::streaming::protocol::event::StreamEvent;
+use crate::streaming::protocol::event::TrackedEvent;
 use anyhow::{Result, anyhow};
 use std::pin::Pin;
 use tokio::sync::mpsc;

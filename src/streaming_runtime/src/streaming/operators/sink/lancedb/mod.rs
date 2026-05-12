@@ -23,9 +23,9 @@ use lance::dataset::{WriteMode, WriteParams};
 use lance::io::{ObjectStoreParams, StorageOptionsAccessor};
 use tracing::{info, warn};
 
-use crate::runtime::streaming::StreamOutput;
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{Collector, Operator};
+use crate::streaming::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
 use crate::sql::common::constants::factory_operator_name;
 use crate::sql::common::{CheckpointBarrier, Watermark};
 

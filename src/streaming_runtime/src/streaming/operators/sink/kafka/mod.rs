@@ -36,10 +36,10 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn};
 
-use crate::runtime::streaming::StreamOutput;
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{Collector, Operator};
-use crate::runtime::streaming::format::DataSerializer;
+use crate::streaming::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
+use crate::streaming::format::DataSerializer;
 use crate::sql::common::constants::factory_operator_name;
 use crate::sql::common::{CheckpointBarrier, FsSchema, Watermark};
 // ============================================================================

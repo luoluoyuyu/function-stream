@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::common::TaskCompletionFlag;
-use crate::runtime::processor::function_error::FunctionErrorReport;
+use crate::common::TaskCompletionFlag;
+use crate::processor::function_error::FunctionErrorReport;
 use crossbeam_channel::Sender;
 
 #[derive(Clone)]

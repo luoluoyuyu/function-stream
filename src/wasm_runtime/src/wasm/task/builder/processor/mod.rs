@@ -14,13 +14,13 @@
 //
 // Specifically handles building logic for Processor type configuration
 
-use crate::runtime::input::{Input, InputProvider};
-use crate::runtime::output::{Output, OutputProvider};
-use crate::runtime::processor::wasm::wasm_processor::WasmProcessorImpl;
-use crate::runtime::processor::wasm::wasm_processor_trait::WasmProcessor;
-use crate::runtime::processor::wasm::wasm_task::WasmTask;
-use crate::runtime::wasm::task::yaml_keys::{TYPE, type_values};
-use crate::runtime::wasm::task::{InputConfig, OutputConfig, ProcessorConfig, WasmTaskConfig};
+use crate::input::{Input, InputProvider};
+use crate::output::{Output, OutputProvider};
+use crate::processor::wasm::wasm_processor::WasmProcessorImpl;
+use crate::processor::wasm::wasm_processor_trait::WasmProcessor;
+use crate::processor::wasm::wasm_task::WasmTask;
+use crate::wasm::task::yaml_keys::{TYPE, type_values};
+use crate::wasm::task::{InputConfig, OutputConfig, ProcessorConfig, WasmTaskConfig};
 use serde_yaml::Value;
 use std::sync::Arc;
 

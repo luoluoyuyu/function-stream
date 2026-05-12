@@ -20,7 +20,7 @@ use rocksdb::{DB, Direction, IteratorMode, Options, WriteBatch};
 
 use super::MetaStore;
 
-/// Single-node durable KV used by [`crate::storage::stream_catalog::CatalogManager`].
+/// Single-node durable KV used by [`crate::stream_catalog::CatalogManager`].
 pub struct RocksDbMetaStore {
     db: Arc<DB>,
 }

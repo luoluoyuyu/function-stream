@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::input::Input;
-use crate::runtime::wasm::task::InputConfig;
+use crate::input::Input;
+use crate::wasm::task::InputConfig;
 
 pub struct InputProvider;
 
@@ -66,8 +66,8 @@ impl InputProvider {
                 extra,
                 runtime: _,
             } => {
-                use crate::runtime::input::InputRunner;
-                use crate::runtime::input::protocol::kafka::{KafkaConfig, KafkaProtocol};
+                use crate::input::InputRunner;
+                use crate::input::protocol::kafka::{KafkaConfig, KafkaProtocol};
 
                 let servers: Vec<String> = bootstrap_servers
                     .split(',')

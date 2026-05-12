@@ -13,7 +13,7 @@
 use crossbeam_channel::TrySendError;
 use thiserror::Error;
 
-use crate::runtime::memory::MemoryAllocationError;
+use crate::memory::MemoryAllocationError;
 
 #[derive(Error, Debug)]
 pub enum StateEngineError {

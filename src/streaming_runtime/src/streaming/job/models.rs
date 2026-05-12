@@ -19,7 +19,7 @@ use protocol::function_stream_graph::FsProgram;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::runtime::streaming::protocol::control::ControlCommand;
+use crate::streaming::protocol::control::ControlCommand;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PipelineStatus {

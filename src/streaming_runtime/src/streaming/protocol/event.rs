@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 
-use crate::runtime::memory::MemoryTicket;
+use crate::memory::MemoryTicket;
 
 pub use function_stream_runtime_common::streaming_protocol::{
     CheckpointBarrier, Watermark, merge_watermarks, watermark_strictly_advances,

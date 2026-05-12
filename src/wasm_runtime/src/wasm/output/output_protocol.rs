@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::wasm::buffer_and_event::BufferOrEvent;
+use crate::wasm::buffer_and_event::BufferOrEvent;
 
 pub trait OutputProtocol: Send + Sync + 'static {
     fn name(&self) -> String;

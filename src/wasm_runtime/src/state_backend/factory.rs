@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::storage::state_backend::error::BackendError;
-use crate::storage::state_backend::store::StateStore;
+use crate::state_backend::error::BackendError;
+use crate::state_backend::store::StateStore;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -47,11 +47,11 @@ pub fn get_factory_for_task<P: AsRef<Path>>(
     task_name: String,
     created_at: u64,
     base_dir: Option<P>,
-    rocksdb_config: Option<crate::storage::state_backend::rocksdb::RocksDBConfig>,
+    rocksdb_config: Option<crate::state_backend::rocksdb::RocksDBConfig>,
 ) -> Result<Arc<dyn StateStoreFactory>, BackendError> {
     match factory_type {
         FactoryType::Memory => {
-            Ok(crate::storage::state_backend::memory::MemoryStateStoreFactory::default_factory())
+            Ok(crate::state_backend::memory::MemoryStateStoreFactory::default_factory())
         }
         FactoryType::RocksDB => {
             let base_dir = base_dir.ok_or_else(|| {
@@ -63,7 +63,7 @@ pub fn get_factory_for_task<P: AsRef<Path>>(
                 .join(format!("{}-{}", task_name, created_at));
 
             let config = rocksdb_config.unwrap_or_default();
-            let factory = crate::storage::state_backend::rocksdb::RocksDBStateStoreFactory::new(
+            let factory = crate::state_backend::rocksdb::RocksDBStateStoreFactory::new(
                 db_path, config,
             )?;
 

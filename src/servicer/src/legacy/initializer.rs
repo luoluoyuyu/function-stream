@@ -113,7 +113,7 @@ pub fn build_core_registry() -> ComponentRegistry {
     builder
         .register(
             "StreamCatalog",
-            crate::storage::stream_catalog::initialize_stream_catalog,
+            crate::stream_catalog::initialize_stream_catalog,
         )
         .register("Coordinator", initialize_coordinator)
         .build()
@@ -124,16 +124,16 @@ pub fn bootstrap_system(config: &GlobalConfig) -> Result<()> {
 
     registry.initialize_all(config)?;
 
-    crate::storage::stream_catalog::restore_global_catalog_from_store();
-    crate::storage::stream_catalog::restore_streaming_jobs_from_store();
+    crate::stream_catalog::restore_global_catalog_from_store();
+    crate::stream_catalog::restore_streaming_jobs_from_store();
 
     info!("System bootstrap finished. Node is ready to accept traffic.");
     Ok(())
 }
 
 fn initialize_wasm_cache(config: &GlobalConfig) -> Result<()> {
-    crate::runtime::processor::wasm::wasm_cache::set_cache_config(
-        crate::runtime::processor::wasm::wasm_cache::WasmCacheConfig {
+    crate::processor::wasm::wasm_cache::set_cache_config(
+        crate::processor::wasm::wasm_cache::WasmCacheConfig {
             enabled: config.wasm.enable_cache,
             cache_dir: crate::config::paths::resolve_path(&config.wasm.cache_dir),
             max_size: config.wasm.max_cache_size,
@@ -151,14 +151,14 @@ fn initialize_wasm_cache(config: &GlobalConfig) -> Result<()> {
 }
 
 fn initialize_task_manager(config: &GlobalConfig) -> Result<()> {
-    crate::runtime::wasm::taskexecutor::TaskManager::init(config)
+    crate::wasm::taskexecutor::TaskManager::init(config)
         .context("TaskManager service failed to start")?;
     Ok(())
 }
 
 #[cfg(feature = "python")]
 fn initialize_python_service(config: &GlobalConfig) -> Result<()> {
-    crate::runtime::processor::python::PythonService::initialize(config)
+    crate::processor::python::PythonService::initialize(config)
         .context("Python Runtime initialization failed")?;
     Ok(())
 }
@@ -168,9 +168,9 @@ fn initialize_memory_service(config: &GlobalConfig) -> Result<()> {
 }
 
 fn initialize_job_manager(config: &GlobalConfig) -> Result<()> {
-    use crate::runtime::streaming::factory::OperatorFactory;
-    use crate::runtime::streaming::factory::Registry;
-    use crate::runtime::streaming::job::{JobManager, StateConfig};
+    use crate::streaming::factory::OperatorFactory;
+    use crate::streaming::factory::Registry;
+    use crate::streaming::job::{JobManager, StateConfig};
     use std::sync::Arc;
 
     let per_operator_memory_bytes = config
@@ -199,16 +199,16 @@ fn initialize_job_manager(config: &GlobalConfig) -> Result<()> {
 }
 
 fn initialize_coordinator(_config: &GlobalConfig) -> Result<()> {
-    crate::runtime::wasm::taskexecutor::TaskManager::get()
+    crate::wasm::taskexecutor::TaskManager::get()
         .context("Dependency violation: Coordinator requires TaskManager")?;
 
-    crate::runtime::memory::try_global_memory_pool()
+    crate::memory::try_global_memory_pool()
         .context("Dependency violation: Coordinator requires MemoryService")?;
 
-    crate::storage::stream_catalog::CatalogManager::global()
+    crate::stream_catalog::CatalogManager::global()
         .context("Dependency violation: Coordinator requires StreamCatalog")?;
 
-    crate::runtime::streaming::job::JobManager::global()
+    crate::streaming::job::JobManager::global()
         .context("Dependency violation: Coordinator requires JobManager")?;
 
     Ok(())

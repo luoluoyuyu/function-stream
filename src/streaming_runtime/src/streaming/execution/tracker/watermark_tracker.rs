@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::streaming::protocol::event::{merge_watermarks, watermark_strictly_advances};
+use crate::streaming::protocol::event::{merge_watermarks, watermark_strictly_advances};
 use crate::sql::common::Watermark;
 
 #[derive(Debug)]

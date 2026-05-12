@@ -10,13 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::common::TaskCompletionFlag;
-use crate::runtime::input::input_protocol::InputProtocol;
-use crate::runtime::input::{Input, InputState};
-use crate::runtime::processor::function_error::FunctionErrorReport;
-use crate::runtime::wasm::buffer_and_event::BufferOrEvent;
-use crate::runtime::wasm::task::ControlMailBox;
-use crate::runtime::wasm::task::InputRuntimeConfig;
+use crate::common::TaskCompletionFlag;
+use crate::input::input_protocol::InputProtocol;
+use crate::input::{Input, InputState};
+use crate::processor::function_error::FunctionErrorReport;
+use crate::wasm::buffer_and_event::BufferOrEvent;
+use crate::wasm::task::ControlMailBox;
+use crate::wasm::task::InputRuntimeConfig;
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -250,7 +250,7 @@ impl<P: InputProtocol> InputRunner<P> {
 impl<P: InputProtocol> Input for InputRunner<P> {
     fn init_with_context(
         &mut self,
-        init_context: &crate::runtime::wasm::taskexecutor::InitContext,
+        init_context: &crate::wasm::taskexecutor::InitContext,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         if !matches!(*self.state.lock().unwrap(), InputState::Uninitialized) {
             return Ok(());
@@ -298,7 +298,7 @@ impl<P: InputProtocol> Input for InputRunner<P> {
             })
             .map_err(|e| Box::new(std::io::Error::other(e)) as Box<dyn std::error::Error + Send>)?;
 
-        use crate::runtime::processor::wasm::thread_pool::{ThreadGroup, ThreadGroupType};
+        use crate::processor::wasm::thread_pool::{ThreadGroup, ThreadGroupType};
         let mut group = ThreadGroup::new(
             ThreadGroupType::Input(self.group_id),
             format!("Input-g{}", self.group_id),

@@ -16,7 +16,7 @@ use anyhow::{Result, anyhow};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-use crate::runtime::streaming::protocol::event::TrackedEvent;
+use crate::streaming::protocol::event::TrackedEvent;
 use protocol::function_stream_graph::{FsEdge, FsNode};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 2048;

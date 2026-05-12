@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::common::ComponentState;
-use crate::runtime::processor::wasm::wasm_task::WasmTask;
+use crate::common::ComponentState;
+use crate::processor::wasm::wasm_task::WasmTask;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

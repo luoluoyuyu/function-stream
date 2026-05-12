@@ -13,12 +13,12 @@
 //! Key-by over the physical plan output: key column(s) are **values** projected by the plan
 //! (e.g. `_key_user_id`); **shuffle / `StreamOutput::Keyed` uses `u64` hashes** computed by
 //! [`datafusion_common::hash_utils::create_hashes`] on those columns — same mechanism as
-//! [`crate::runtime::streaming::operators::key_by::KeyByOperator`].
+//! [`crate::streaming::operators::key_by::KeyByOperator`].
 
-use crate::runtime::streaming::StreamOutput;
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{Collector, Operator};
-use crate::runtime::streaming::operators::StatelessPhysicalExecutor;
+use crate::streaming::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
+use crate::streaming::operators::StatelessPhysicalExecutor;
 use crate::sql::common::{CheckpointBarrier, Watermark};
 use ahash::RandomState;
 use anyhow::{Result, anyhow};

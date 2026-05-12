@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::output::Output;
-use crate::runtime::wasm::task::OutputConfig;
+use crate::output::Output;
+use crate::wasm::task::OutputConfig;
 
 pub struct OutputProvider;
 
@@ -59,8 +59,8 @@ impl OutputProvider {
                 extra,
                 runtime: _,
             } => {
-                use crate::runtime::output::output_runner::OutputRunner;
-                use crate::runtime::output::protocol::kafka::{
+                use crate::output::output_runner::OutputRunner;
+                use crate::output::protocol::kafka::{
                     KafkaOutputProtocol, KafkaProducerConfig,
                 };
 

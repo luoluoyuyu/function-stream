@@ -30,22 +30,22 @@ use crate::config::{
     DEFAULT_CHECKPOINT_INTERVAL_MS, DEFAULT_OPERATOR_STATE_STORE_MEMORY_BYTES,
     DEFAULT_PIPELINE_PARALLELISM,
 };
-use crate::runtime::memory::global_memory_pool;
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::{ConstructedOperator, Operator};
-use crate::runtime::streaming::api::source::SourceOperator;
-use crate::runtime::streaming::execution::{ChainBuilder, Pipeline, SourceDriver};
-use crate::runtime::streaming::factory::OperatorFactory;
-use crate::runtime::streaming::job::edge_manager::EdgeManager;
-use crate::runtime::streaming::job::models::{
+use crate::memory::global_memory_pool;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{ConstructedOperator, Operator};
+use crate::streaming::api::source::SourceOperator;
+use crate::streaming::execution::{ChainBuilder, Pipeline, SourceDriver};
+use crate::streaming::factory::OperatorFactory;
+use crate::streaming::job::edge_manager::EdgeManager;
+use crate::streaming::job::models::{
     PhysicalExecutionGraph, PhysicalPipeline, PipelineStatus, StreamingJobRollupStatus,
 };
-use crate::runtime::streaming::network::endpoint::{BoxedEventStream, PhysicalSender};
-use crate::runtime::streaming::protocol::control::{ControlCommand, JobMasterEvent, StopMode};
-use crate::runtime::streaming::protocol::event::CheckpointBarrier;
-use crate::runtime::streaming::state::{IoManager, IoPool, NoopMetricsCollector};
+use crate::streaming::network::endpoint::{BoxedEventStream, PhysicalSender};
+use crate::streaming::protocol::control::{ControlCommand, JobMasterEvent, StopMode};
+use crate::streaming::protocol::event::CheckpointBarrier;
+use crate::streaming::state::{IoManager, IoPool, NoopMetricsCollector};
 use crate::sql::logical_node::logical::OperatorName;
-use crate::storage::stream_catalog::CatalogManager;
+use crate::stream_catalog::CatalogManager;
 
 #[derive(Debug, Clone)]
 pub struct StreamingJobSummary {
@@ -80,7 +80,7 @@ pub struct StateConfig {
     pub pipeline_parallelism: u32,
     pub job_manager_control_plane_threads: u32,
     pub job_manager_data_plane_threads: u32,
-    /// Total bytes shared by all [`crate::runtime::streaming::state::OperatorStateStore`] (global pool).
+    /// Total bytes shared by all [`crate::streaming::state::OperatorStateStore`] (global pool).
     pub per_operator_memory_bytes: u64,
 }
 
@@ -103,7 +103,7 @@ impl Default for StateConfig {
 
 static GLOBAL_JOB_MANAGER: OnceLock<Arc<JobManager>> = OnceLock::new();
 
-/// Operators that create an [`crate::runtime::streaming::state::OperatorStateStore`] at runtime.
+/// Operators that create an [`crate::streaming::state::OperatorStateStore`] at runtime.
 fn pipeline_state_store_operator_count(operators: &[ChainedOperator]) -> usize {
     operators
         .iter()
@@ -159,7 +159,7 @@ struct CheckpointCoordinatorConfig {
 }
 
 impl PipelineRunner {
-    async fn run(self) -> Result<(), crate::runtime::streaming::error::RunError> {
+    async fn run(self) -> Result<(), crate::streaming::error::RunError> {
         match self {
             PipelineRunner::Source(driver) => driver.run().await,
             PipelineRunner::Standard(pipeline) => pipeline.run().await,

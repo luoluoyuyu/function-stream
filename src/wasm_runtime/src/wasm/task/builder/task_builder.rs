@@ -15,13 +15,13 @@
 //! Provides unified factory methods to create TaskLifecycle instances from YAML config.
 //! Dispatches to specific builders (Processor, Source, Sink, Python) based on task type.
 
-use crate::runtime::wasm::task::TaskLifecycle;
-use crate::runtime::wasm::task::builder::processor::ProcessorBuilder;
+use crate::wasm::task::TaskLifecycle;
+use crate::wasm::task::builder::processor::ProcessorBuilder;
 #[cfg(feature = "python")]
-use crate::runtime::wasm::task::builder::python::PythonBuilder;
-use crate::runtime::wasm::task::builder::sink::SinkBuilder;
-use crate::runtime::wasm::task::builder::source::SourceBuilder;
-use crate::runtime::wasm::task::yaml_keys::{NAME, TYPE, type_values};
+use crate::wasm::task::builder::python::PythonBuilder;
+use crate::wasm::task::builder::sink::SinkBuilder;
+use crate::wasm::task::builder::source::SourceBuilder;
+use crate::wasm::task::yaml_keys::{NAME, TYPE, type_values};
 use serde_yaml::Value;
 use std::sync::Arc;
 
@@ -169,7 +169,7 @@ impl TaskBuilder {
     /// Build and unwrap WASM task from Arc
     fn build_wasm_task(
         result: Result<
-            Arc<crate::runtime::processor::wasm::wasm_task::WasmTask>,
+            Arc<crate::processor::wasm::wasm_task::WasmTask>,
             Box<dyn std::error::Error + Send>,
         >,
         task_name: &str,

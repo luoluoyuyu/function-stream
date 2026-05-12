@@ -13,10 +13,10 @@
 //! WebAssembly execution runtime.
 //!
 //! Implementation lives under `src/wasm/` in this package. It is currently **compiled as
-//! part of the `function-stream` crate** via `#[path]` in `src/runtime.rs`, so paths
-//! like `crate::sql` (streaming planner dependency) and `crate::runtime::memory` keep resolving.
+//! part of the `function-stream` crate** via `#[path]` in `src/lib.rs` / `src/main.rs`, so paths
+//! like `crate::sql` (streaming planner dependency) and `crate::memory` keep resolving.
 //!
 //! Operator state storage (`state_backend/`) also lives in this package and is compiled via
-//! `#[path]` from `src/storage.rs` as `crate::storage::state_backend`.
+//! `#[path]` from the root crate as `crate::state_backend`.
 
 pub const CRATE_NAME: &str = "function-stream-wasm-runtime";

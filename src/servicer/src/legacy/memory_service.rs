@@ -52,7 +52,7 @@ impl MemoryService {
 
         let total_pool_bytes =
             streaming_runtime_memory_bytes.saturating_add(operator_state_store_memory_bytes);
-        crate::runtime::memory::init_global_memory_pool(total_pool_bytes)
+        crate::memory::init_global_memory_pool(total_pool_bytes)
             .context("Global memory pool initialization failed")?;
 
         info!("MemoryService initialized");

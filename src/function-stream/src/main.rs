@@ -13,16 +13,70 @@
 #![allow(dead_code)]
 
 pub use function_stream_config as config;
-#[path = "coordinator/src/legacy/mod.rs"]
+#[path = "../../coordinator/src/legacy/mod.rs"]
 mod coordinator;
 pub use function_stream_logger as logging;
-mod runtime;
-#[path = "servicer/src/legacy/mod.rs"]
-mod server;
-pub use function_stream_streaming_planner as sql;
-mod storage;
+
+pub use function_stream_runtime_common::{common, memory};
+
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
+
+#[path = "../../streaming_runtime/src/streaming/mod.rs"]
+mod streaming;
+
+#[path = "../../streaming_runtime/src/util/mod.rs"]
+mod util;
+
+#[path = "../../wasm_runtime/src/wasm/mod.rs"]
+mod wasm;
+
+pub use wasm::{input, output, processor};
+
+#[path = "../../wasm_runtime/src/state_backend/mod.rs"]
+mod state_backend;
+
+#[path = "../../catalog_storage/src/stream_catalog/mod.rs"]
+mod stream_catalog;
+
+#[path = "../../catalog_storage/src/task/mod.rs"]
+mod task;
+
+pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow::Result<()> {
+    use stream_catalog::{CatalogManager, InMemoryMetaStore, MetaStore, RocksDbMetaStore};
+
+    let store: Arc<dyn MetaStore> = if !config.stream_catalog.persist {
+        Arc::new(InMemoryMetaStore::new())
+    } else {
+        let path = config
+            .stream_catalog
+            .db_path
+            .as_ref()
+            .map(|p| crate::config::resolve_path(p))
+            .unwrap_or_else(|| crate::config::get_data_dir().join("catalog.db"));
+
+        std::fs::create_dir_all(&path).with_context(|| {
+            format!(
+                "Failed to create stream catalog RocksDB directory {}",
+                path.display()
+            )
+        })?;
+
+        Arc::new(RocksDbMetaStore::open(&path).with_context(|| {
+            format!(
+                "Failed to open stream catalog RocksDB at {}",
+                path.display()
+            )
+        })?)
+    };
+
+    CatalogManager::init_global(store).context("Stream catalog (CatalogManager) global init failed")
+}
+
+#[path = "../../servicer/src/legacy/mod.rs"]
+mod server;
+pub use function_stream_streaming_planner as sql;
 use std::thread;
 use tokio::sync::oneshot;
 

@@ -10,9 +10,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::storage::state_backend::error::BackendError;
-use crate::storage::state_backend::key_builder::{build_key, increment_key, is_all_0xff};
-use crate::storage::state_backend::store::{StateIterator, StateStore};
+use crate::state_backend::error::BackendError;
+use crate::state_backend::key_builder::{build_key, increment_key, is_all_0xff};
+use crate::state_backend::store::{StateIterator, StateStore};
 use rocksdb::{
     BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompressionType, Direction,
     IteratorMode, Options, ReadOptions, WriteBatch, WriteOptions,

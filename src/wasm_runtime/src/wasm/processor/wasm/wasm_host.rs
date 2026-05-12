@@ -10,10 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::output::Output;
-use crate::runtime::processor::wasm::wasm_cache;
-use crate::runtime::wasm::buffer_and_event::BufferOrEvent;
-use crate::storage::state_backend::{StateStore, StateStoreFactory};
+use crate::output::Output;
+use crate::processor::wasm::wasm_cache;
+use crate::wasm::buffer_and_event::BufferOrEvent;
+use crate::state_backend::{StateStore, StateStoreFactory};
 use std::sync::{Arc, OnceLock};
 use wasmtime::component::{Component, HasData, Linker, Resource, bindgen};
 use wasmtime::{Config, Engine, Store};
@@ -67,7 +67,7 @@ fn get_global_engine(_wasm_size: usize) -> anyhow::Result<Arc<Engine>> {
 
 bindgen!({
     world: "processor",
-    path: "wit",
+    path: "../../wit",
     with: {
         "functionstream:core/kv.store": FunctionStreamStoreHandle,
         "functionstream:core/kv.iterator": FunctionStreamIteratorHandle,
@@ -86,7 +86,7 @@ impl Drop for FunctionStreamStoreHandle {
 }
 
 pub struct FunctionStreamIteratorHandle {
-    pub state_iterator: Box<dyn crate::storage::state_backend::StateIterator>,
+    pub state_iterator: Box<dyn crate::state_backend::StateIterator>,
 }
 
 pub struct HostState {
@@ -205,7 +205,7 @@ impl HostStore for HostState {
             .get(&self_)
             .map_err(|e| Error::Other(format!("Failed to get store resource: {}", e)))?;
 
-        let real_key = crate::storage::state_backend::key_builder::build_key(
+        let real_key = crate::state_backend::key_builder::build_key(
             &key.key_group,
             &key.key,
             &key.namespace,
@@ -228,7 +228,7 @@ impl HostStore for HostState {
             .get(&self_)
             .map_err(|e| Error::Other(format!("Failed to get store resource: {}", e)))?;
 
-        let real_key = crate::storage::state_backend::key_builder::build_key(
+        let real_key = crate::state_backend::key_builder::build_key(
             &key.key_group,
             &key.key,
             &key.namespace,
@@ -251,7 +251,7 @@ impl HostStore for HostState {
             .get(&self_)
             .map_err(|e| Error::Other(format!("Failed to get store resource: {}", e)))?;
 
-        let real_key = crate::storage::state_backend::key_builder::build_key(
+        let real_key = crate::state_backend::key_builder::build_key(
             &key.key_group,
             &key.key,
             &key.namespace,
@@ -284,7 +284,7 @@ impl HostStore for HostState {
             .get(&self_)
             .map_err(|e| Error::Other(format!("Failed to get store resource: {}", e)))?;
 
-        let prefix_key = crate::storage::state_backend::key_builder::build_key(
+        let prefix_key = crate::state_backend::key_builder::build_key(
             &key.key_group,
             &key.key,
             &key.namespace,
@@ -323,13 +323,13 @@ impl HostStore for HostState {
             .get(&self_)
             .map_err(|e| Error::Other(format!("Failed to get store resource: {}", e)))?;
 
-        let start_key = crate::storage::state_backend::key_builder::build_key(
+        let start_key = crate::state_backend::key_builder::build_key(
             &key_group,
             &key,
             &namespace,
             &start_inclusive,
         );
-        let end_key = crate::storage::state_backend::key_builder::build_key(
+        let end_key = crate::state_backend::key_builder::build_key(
             &key_group,
             &key,
             &namespace,
@@ -449,7 +449,7 @@ pub fn create_wasm_host_with_component(
     engine: &Engine,
     component: &Component,
     outputs: Vec<Box<dyn Output>>,
-    init_context: &crate::runtime::wasm::taskexecutor::InitContext,
+    init_context: &crate::wasm::taskexecutor::InitContext,
     task_name: String,
     create_time: u64,
 ) -> anyhow::Result<(Processor, Store<HostState>)> {
@@ -495,7 +495,7 @@ pub fn create_wasm_host_with_component(
 pub fn create_wasm_host(
     wasm_bytes: &[u8],
     outputs: Vec<Box<dyn Output>>,
-    init_context: &crate::runtime::wasm::taskexecutor::InitContext,
+    init_context: &crate::wasm::taskexecutor::InitContext,
     task_name: String,
     create_time: u64,
 ) -> anyhow::Result<(Processor, Store<HostState>)> {

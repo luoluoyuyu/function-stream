@@ -14,14 +14,14 @@
 //
 // Specifically handles building logic for python runtime configuration
 
-use crate::runtime::input::{Input, InputProvider};
-use crate::runtime::output::{Output, OutputProvider};
-use crate::runtime::processor::python::get_python_engine_and_component;
-use crate::runtime::processor::wasm::wasm_processor::WasmProcessorImpl;
-use crate::runtime::processor::wasm::wasm_processor_trait::WasmProcessor;
-use crate::runtime::processor::wasm::wasm_task::WasmTask;
-use crate::runtime::wasm::task::yaml_keys::{TYPE, type_values};
-use crate::runtime::wasm::task::{InputConfig, OutputConfig, ProcessorConfig, WasmTaskConfig};
+use crate::input::{Input, InputProvider};
+use crate::output::{Output, OutputProvider};
+use crate::processor::python::get_python_engine_and_component;
+use crate::processor::wasm::wasm_processor::WasmProcessorImpl;
+use crate::processor::wasm::wasm_processor_trait::WasmProcessor;
+use crate::processor::wasm::wasm_task::WasmTask;
+use crate::wasm::task::yaml_keys::{TYPE, type_values};
+use crate::wasm::task::{InputConfig, OutputConfig, ProcessorConfig, WasmTaskConfig};
 use serde_yaml::Value;
 use std::sync::Arc;
 
@@ -33,7 +33,7 @@ impl PythonBuilder {
         yaml_value: &Value,
         modules: &[(String, Vec<u8>)],
         create_time: u64,
-    ) -> Result<Box<dyn crate::runtime::wasm::task::TaskLifecycle>, Box<dyn std::error::Error + Send>>
+    ) -> Result<Box<dyn crate::wasm::task::TaskLifecycle>, Box<dyn std::error::Error + Send>>
     {
         let config_type = yaml_value
             .get(TYPE)

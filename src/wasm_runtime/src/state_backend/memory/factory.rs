@@ -11,8 +11,8 @@
 // limitations under the License.
 
 use super::store::MemoryStateStore;
-use crate::storage::state_backend::error::BackendError;
-use crate::storage::state_backend::factory::StateStoreFactory;
+use crate::state_backend::error::BackendError;
+use crate::state_backend::factory::StateStoreFactory;
 use std::sync::{Arc, Mutex};
 
 pub struct MemoryStateStoreFactory {}
@@ -43,7 +43,7 @@ impl StateStoreFactory for MemoryStateStoreFactory {
     fn new_state_store(
         &self,
         _column_family: Option<String>,
-    ) -> Result<Box<dyn crate::storage::state_backend::store::StateStore>, BackendError> {
+    ) -> Result<Box<dyn crate::state_backend::store::StateStore>, BackendError> {
         Ok(Box::new(MemoryStateStore::new()))
     }
 }

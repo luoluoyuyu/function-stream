@@ -16,7 +16,7 @@ use arrow_array::{Int32Array, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 
 use super::DataSet;
-use crate::runtime::streaming::job::StreamingJobSummary;
+use crate::streaming::job::StreamingJobSummary;
 
 #[derive(Clone, Debug)]
 pub struct ShowStreamingTablesResult {

@@ -20,7 +20,7 @@ use protocol::storage::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::common::ComponentState;
+use crate::common::ComponentState;
 
 use super::storage::TaskModuleBytes;
 

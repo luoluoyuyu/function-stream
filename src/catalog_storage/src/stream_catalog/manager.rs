@@ -627,7 +627,7 @@ pub fn restore_global_catalog_from_store() {
 }
 
 pub fn restore_streaming_jobs_from_store() {
-    use crate::runtime::streaming::job::JobManager;
+    use crate::streaming::job::JobManager;
 
     let Some(catalog) = CatalogManager::try_global() else {
         warn!("CatalogManager not available; skipping streaming job restore");
@@ -742,7 +742,7 @@ mod tests {
     use crate::sql::schema::column_descriptor::ColumnDescriptor;
     use crate::sql::schema::table::CatalogEntity;
     use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
-    use crate::storage::stream_catalog::InMemoryMetaStore;
+    use crate::stream_catalog::InMemoryMetaStore;
 
     use super::CatalogManager;
 

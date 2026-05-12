@@ -24,16 +24,16 @@ use protocol::function_stream_graph::{
 };
 use tracing::info;
 
-use crate::runtime::streaming::api::operator::ConstructedOperator;
-use crate::runtime::streaming::api::source::SourceOffset;
-use crate::runtime::streaming::factory::global::Registry;
-use crate::runtime::streaming::factory::operator_constructor::OperatorConstructor;
-use crate::runtime::streaming::format::{
+use crate::streaming::api::operator::ConstructedOperator;
+use crate::streaming::api::source::SourceOffset;
+use crate::streaming::factory::global::Registry;
+use crate::streaming::factory::operator_constructor::OperatorConstructor;
+use crate::streaming::format::{
     BadDataPolicy as RtBadDataPolicy, DataSerializer, DecimalEncoding as RtDecimalEncoding,
     Format as RuntimeFormat, JsonFormat as RuntimeJsonFormat, TimestampFormat as RtTimestampFormat,
 };
-use crate::runtime::streaming::operators::sink::kafka::{ConsistencyMode, KafkaSinkOperator};
-use crate::runtime::streaming::operators::source::kafka::{
+use crate::streaming::operators::sink::kafka::{ConsistencyMode, KafkaSinkOperator};
+use crate::streaming::operators::source::kafka::{
     BufferedDeserializer, KafkaSourceOperator,
 };
 use crate::sql::common::FsSchema;

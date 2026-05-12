@@ -20,7 +20,7 @@ use super::proto_codec::{
 };
 use super::storage::{StoredTaskInfo, TaskStorage};
 use crate::config::storage::RocksDBStorageConfig;
-use crate::runtime::common::ComponentState;
+use crate::common::ComponentState;
 use anyhow::{Context, Result, anyhow};
 use rocksdb::{ColumnFamilyDescriptor, DB, IteratorMode, Options, WriteBatch};
 use std::path::Path;

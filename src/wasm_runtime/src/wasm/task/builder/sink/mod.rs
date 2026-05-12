@@ -14,8 +14,8 @@
 //
 // Specifically handles building logic for Sink type configuration (future support)
 
-use crate::runtime::processor::wasm::wasm_task::WasmTask;
-use crate::runtime::wasm::task::yaml_keys::{TYPE, type_values};
+use crate::processor::wasm::wasm_task::WasmTask;
+use crate::wasm::task::yaml_keys::{TYPE, type_values};
 use serde_yaml::Value;
 use std::sync::Arc;
 

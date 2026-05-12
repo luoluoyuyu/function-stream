@@ -11,12 +11,12 @@
 // limitations under the License.
 
 use crate::config::GlobalConfig;
-use crate::runtime::common::ComponentState;
-use crate::runtime::processor::wasm::thread_pool::{GlobalTaskThreadPool, TaskThreadPool};
-use crate::runtime::wasm::task::{TaskBuilder, TaskLifecycle};
-use crate::runtime::wasm::taskexecutor::init_context::InitContext;
-use crate::storage::state_backend::StateStorageServer;
-use crate::storage::task::{
+use crate::common::ComponentState;
+use crate::processor::wasm::thread_pool::{GlobalTaskThreadPool, TaskThreadPool};
+use crate::wasm::task::{TaskBuilder, TaskLifecycle};
+use crate::wasm::taskexecutor::init_context::InitContext;
+use crate::state_backend::StateStorageServer;
+use crate::task::{
     FunctionInfo, StoredTaskInfo, TaskModuleBytes, TaskStorage, TaskStorageFactory,
 };
 

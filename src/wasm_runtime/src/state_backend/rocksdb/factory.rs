@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::storage::state_backend::error::BackendError;
-use crate::storage::state_backend::factory::StateStoreFactory;
+use crate::state_backend::error::BackendError;
+use crate::state_backend::factory::StateStoreFactory;
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -56,7 +56,7 @@ impl StateStoreFactory for RocksDBStateStoreFactory {
     fn new_state_store(
         &self,
         column_family: Option<String>,
-    ) -> Result<Box<dyn crate::storage::state_backend::store::StateStore>, BackendError> {
+    ) -> Result<Box<dyn crate::state_backend::store::StateStore>, BackendError> {
         self.new_state_store(column_family)
     }
 }
@@ -137,7 +137,7 @@ impl RocksDBStateStoreFactory {
     pub fn new_state_store(
         &self,
         column_family: Option<String>,
-    ) -> Result<Box<dyn crate::storage::state_backend::store::StateStore>, BackendError> {
+    ) -> Result<Box<dyn crate::state_backend::store::StateStore>, BackendError> {
         if let Some(ref cf_name) = column_family
             && cf_name != "default"
             && self.db.cf_handle(cf_name).is_none()
@@ -158,7 +158,7 @@ impl RocksDBStateStoreFactory {
             }
         }
 
-        crate::storage::state_backend::rocksdb::store::RocksDBStateStore::new_with_factory(
+        crate::state_backend::rocksdb::store::RocksDBStateStore::new_with_factory(
             self.db.clone(),
             column_family,
         )

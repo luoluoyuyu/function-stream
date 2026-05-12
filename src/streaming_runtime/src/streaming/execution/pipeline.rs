@@ -14,16 +14,16 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_stream::{StreamExt, StreamMap};
 use tracing::{Instrument, info, info_span};
 
-use crate::runtime::streaming::api::context::TaskContext;
-use crate::runtime::streaming::api::operator::Operator;
-use crate::runtime::streaming::error::RunError;
-use crate::runtime::streaming::execution::operator_chain::{ChainBuilder, OperatorDrive};
-use crate::runtime::streaming::execution::tracker::{
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::Operator;
+use crate::streaming::error::RunError;
+use crate::streaming::execution::operator_chain::{ChainBuilder, OperatorDrive};
+use crate::streaming::execution::tracker::{
     barrier_aligner::{AlignmentStatus, BarrierAligner},
     watermark_tracker::WatermarkTracker,
 };
-use crate::runtime::streaming::network::endpoint::BoxedEventStream;
-use crate::runtime::streaming::protocol::{
+use crate::streaming::network::endpoint::BoxedEventStream;
+use crate::streaming::protocol::{
     control::ControlCommand,
     event::{StreamEvent, TrackedEvent},
 };
