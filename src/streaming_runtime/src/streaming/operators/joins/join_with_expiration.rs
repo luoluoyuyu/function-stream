@@ -24,13 +24,13 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
+use crate::sql::common::{CheckpointBarrier, FsSchema, Watermark};
+use crate::sql::physical::{StreamingDecodingContext, StreamingExtensionCodec};
 use crate::streaming::StreamOutput;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::{Collector, Operator};
 use crate::streaming::factory::Registry;
 use crate::streaming::state::OperatorStateStore;
-use crate::sql::common::{CheckpointBarrier, FsSchema, Watermark};
-use crate::sql::physical::{StreamingDecodingContext, StreamingExtensionCodec};
 use async_trait::async_trait;
 use protocol::function_stream_graph::JoinOperator;
 

@@ -21,12 +21,12 @@ use datafusion_proto::physical_plan::to_proto::serialize_physical_expr;
 use prost::Message;
 use protocol::function_stream_graph::ExpressionWatermarkConfig;
 
-use crate::multifield_partial_ord;
 use crate::common::constants::{extension_node, runtime_operator_kind};
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::schema::utils::add_timestamp_field;
 use crate::types::TIMESTAMP_FIELD;
 

@@ -26,16 +26,16 @@ use std::time::SystemTime;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use tracing::{info, warn};
 
-use crate::streaming::StreamOutput;
-use crate::streaming::api::context::TaskContext;
-use crate::streaming::api::operator::{Collector, Operator};
-use crate::streaming::factory::Registry;
-use crate::streaming::state::OperatorStateStore;
 use crate::sql::common::time_utils::print_time;
 use crate::sql::common::{
     CheckpointBarrier, FsSchema, FsSchemaRef, Watermark, from_nanos, to_nanos,
 };
 use crate::sql::physical::{StreamingDecodingContext, StreamingExtensionCodec};
+use crate::streaming::StreamOutput;
+use crate::streaming::api::context::TaskContext;
+use crate::streaming::api::operator::{Collector, Operator};
+use crate::streaming::factory::Registry;
+use crate::streaming::state::OperatorStateStore;
 use async_trait::async_trait;
 
 // ============================================================================

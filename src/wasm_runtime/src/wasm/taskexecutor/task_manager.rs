@@ -10,15 +10,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::GlobalConfig;
 use crate::common::ComponentState;
+use crate::config::GlobalConfig;
 use crate::processor::wasm::thread_pool::{GlobalTaskThreadPool, TaskThreadPool};
+use crate::state_backend::StateStorageServer;
+use crate::task::{FunctionInfo, StoredTaskInfo, TaskModuleBytes, TaskStorage, TaskStorageFactory};
 use crate::wasm::task::{TaskBuilder, TaskLifecycle};
 use crate::wasm::taskexecutor::init_context::InitContext;
-use crate::state_backend::StateStorageServer;
-use crate::task::{
-    FunctionInfo, StoredTaskInfo, TaskModuleBytes, TaskStorage, TaskStorageFactory,
-};
 
 use anyhow::{Context, Result, anyhow};
 use parking_lot::RwLock;

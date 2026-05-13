@@ -29,9 +29,7 @@ use crate::common::constants::{extension_node, proto_operator_name, updating_sta
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::functions::multi_hash;
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
-use crate::logical_node::{
-    CompiledTopologyNode, IsRetractExtension, StreamingOperatorBlueprint,
-};
+use crate::logical_node::{CompiledTopologyNode, IsRetractExtension, StreamingOperatorBlueprint};
 use crate::logical_planner::planner::{NamedNode, Planner};
 use crate::physical::StreamingExtensionCodec;
 

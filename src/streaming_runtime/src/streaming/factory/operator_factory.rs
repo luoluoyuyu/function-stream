@@ -12,14 +12,10 @@
 
 use super::operator_constructor::OperatorConstructor;
 use crate::streaming::api::operator::ConstructedOperator;
-use crate::streaming::factory::connector::{
-    ConnectorSinkDispatcher, ConnectorSourceDispatcher,
-};
+use crate::streaming::factory::connector::{ConnectorSinkDispatcher, ConnectorSourceDispatcher};
 use crate::streaming::factory::global::Registry;
 use crate::streaming::operators::grouping::IncrementalAggregatingConstructor;
-use crate::streaming::operators::joins::{
-    InstantJoinConstructor, JoinWithExpirationConstructor,
-};
+use crate::streaming::operators::joins::{InstantJoinConstructor, JoinWithExpirationConstructor};
 use anyhow::{Result, anyhow};
 use prost::Message;
 use protocol::function_stream_graph::ProjectionOperator as ProjectionOperatorProto;

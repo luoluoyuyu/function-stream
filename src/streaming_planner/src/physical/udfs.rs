@@ -20,8 +20,8 @@ use datafusion::logical_expr::{
     ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, TypeSignature, Volatility,
 };
 
-use crate::make_udf_function;
 use crate::common::constants::window_function_udf;
+use crate::make_udf_function;
 use crate::schema::utils::window_arrow_struct;
 
 // ============================================================================

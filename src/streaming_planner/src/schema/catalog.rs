@@ -26,10 +26,10 @@ use super::column_descriptor::ColumnDescriptor;
 use super::data_encoding_format::DataEncodingFormat;
 use super::table::SqlSource;
 use super::temporal_pipeline_config::TemporalPipelineConfig;
-use crate::multifield_partial_ord;
 use crate::common::constants::sql_field;
 use crate::common::{Format, FsSchema};
 use crate::connector::config::ConnectorConfig;
+use crate::multifield_partial_ord;
 use crate::types::ProcessingMode;
 
 #[derive(Debug, Clone)]

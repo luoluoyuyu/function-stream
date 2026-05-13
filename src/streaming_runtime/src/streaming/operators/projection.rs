@@ -22,12 +22,12 @@ use std::sync::Arc;
 
 use protocol::function_stream_graph::ProjectionOperator as ProjectionOperatorProto;
 
+use crate::sql::common::{CheckpointBarrier, FsSchema, FsSchemaRef, Watermark};
+use crate::sql::logical_node::logical::OperatorName;
 use crate::streaming::StreamOutput;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::{Collector, Operator};
 use crate::streaming::factory::global::Registry;
-use crate::sql::common::{CheckpointBarrier, FsSchema, FsSchemaRef, Watermark};
-use crate::sql::logical_node::logical::OperatorName;
 
 pub struct ProjectionOperator {
     name: String,

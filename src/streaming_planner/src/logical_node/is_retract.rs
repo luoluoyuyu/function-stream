@@ -18,9 +18,7 @@ use datafusion::logical_expr::{Expr, LogicalPlan, UserDefinedLogicalNodeCore};
 
 use crate::multifield_partial_ord;
 use crate::physical::updating_meta_field;
-use crate::types::{
-    QualifiedField, TIMESTAMP_FIELD, build_df_schema, extract_qualified_fields,
-};
+use crate::types::{QualifiedField, TIMESTAMP_FIELD, build_df_schema, extract_qualified_fields};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IsRetractExtension {

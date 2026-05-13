@@ -33,8 +33,7 @@ impl PythonBuilder {
         yaml_value: &Value,
         modules: &[(String, Vec<u8>)],
         create_time: u64,
-    ) -> Result<Box<dyn crate::wasm::task::TaskLifecycle>, Box<dyn std::error::Error + Send>>
-    {
+    ) -> Result<Box<dyn crate::wasm::task::TaskLifecycle>, Box<dyn std::error::Error + Send>> {
         let config_type = yaml_value
             .get(TYPE)
             .and_then(|v| v.as_str())

@@ -33,8 +33,8 @@ pub mod topology;
 pub mod with_option_keys;
 
 // ── Re-exports from existing modules ──
-pub use function_stream_runtime_common::streaming_protocol::{CheckpointBarrier, Watermark};
 pub use arrow_ext::FsExtensionType;
+pub use function_stream_runtime_common::streaming_protocol::{CheckpointBarrier, Watermark};
 pub use time_utils::{from_nanos, to_micros, to_millis, to_nanos};
 
 // ── Re-exports from new modules ──

@@ -44,9 +44,7 @@ use datafusion_proto::physical_plan::to_proto::serialize_physical_expr;
 
 use crate::common::constants::sql_planning_default;
 use crate::common::{FsSchema, FsSchemaRef};
-use crate::logical_node::debezium::{
-    PACK_NODE_NAME, UNROLL_NODE_NAME, UnrollDebeziumPayloadNode,
-};
+use crate::logical_node::debezium::{PACK_NODE_NAME, UNROLL_NODE_NAME, UnrollDebeziumPayloadNode};
 use crate::logical_node::key_calculation::KeyExtractionNode;
 use crate::logical_node::logical::{LogicalEdge, LogicalGraph, LogicalNode};
 use crate::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
@@ -113,10 +111,7 @@ impl<'a> Planner<'a> {
         sql_planning_default::KEYED_AGGREGATE_DEFAULT_PARALLELISM
     }
 
-    pub fn new(
-        schema_provider: &'a StreamSchemaProvider,
-        session_state: &'a SessionState,
-    ) -> Self {
+    pub fn new(schema_provider: &'a StreamSchemaProvider, session_state: &'a SessionState) -> Self {
         let planner =
             DefaultPhysicalPlanner::with_extension_planners(vec![Arc::new(FsExtensionPlanner {})]);
         Self {
@@ -159,11 +154,7 @@ impl<'a> Planner<'a> {
             .create_physical_expr(expr, input_dfschema, self.session_state)
     }
 
-    pub fn serialize_as_physical_expr(
-        &self,
-        expr: &Expr,
-        schema: &DFSchema,
-    ) -> Result<Vec<u8>> {
+    pub fn serialize_as_physical_expr(&self, expr: &Expr, schema: &DFSchema) -> Result<Vec<u8>> {
         let physical = self.create_physical_expr(expr, schema)?;
         let proto = serialize_physical_expr(&physical, &DefaultPhysicalExtensionCodec {})?;
         Ok(proto.encode_to_vec())

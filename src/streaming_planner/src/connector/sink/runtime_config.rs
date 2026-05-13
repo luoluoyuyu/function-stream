@@ -14,12 +14,12 @@ use std::collections::HashMap;
 
 use datafusion::common::{DataFusionError, Result, plan_err};
 
+use crate::common::connector_options::ConnectorOptions;
+use crate::common::with_option_keys as opt;
 use function_stream_config::global_config::{
     DEFAULT_OPERATOR_STATE_STORE_MEMORY_BYTES, DEFAULT_SINK_BUFFER_MEMORY_BYTES,
 };
 use function_stream_config::streaming_job::DEFAULT_CHECKPOINT_INTERVAL_MS;
-use crate::common::connector_options::ConnectorOptions;
-use crate::common::with_option_keys as opt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SinkRuntimeConfig {

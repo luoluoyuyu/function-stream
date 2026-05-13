@@ -14,6 +14,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{Instant, sleep};
 use tracing::{Instrument, info, info_span, warn};
 
+use crate::sql::common::CheckpointBarrier;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::source::{SourceCheckpointReport, SourceEvent, SourceOperator};
 use crate::streaming::error::RunError;
@@ -22,7 +23,6 @@ use crate::streaming::protocol::{
     control::ControlCommand,
     event::{StreamEvent, TrackedEvent},
 };
-use crate::sql::common::CheckpointBarrier;
 
 pub struct SourceDriver {
     operator: Box<dyn SourceOperator>,

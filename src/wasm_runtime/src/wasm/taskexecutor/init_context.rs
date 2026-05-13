@@ -15,9 +15,9 @@
 // Provides various resources needed for task initialization, including state storage, task storage, thread pool, etc.
 
 use crate::processor::wasm::thread_pool::{TaskThreadPool, ThreadGroup};
-use crate::wasm::task::ControlMailBox;
 use crate::state_backend::StateStorageServer;
 use crate::task::TaskStorage;
+use crate::wasm::task::ControlMailBox;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]

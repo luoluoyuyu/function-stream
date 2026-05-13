@@ -27,7 +27,7 @@
 //! **`INSERT` is not supported** at the coordinator layer — use `CREATE TABLE ... AS SELECT` or
 //! `CREATE STREAMING TABLE ... AS SELECT` instead (see coordinator classification).
 
-use datafusion::common::{plan_err, Result};
+use datafusion::common::{Result, plan_err};
 use datafusion::error::DataFusionError;
 use datafusion::sql::sqlparser::ast::Statement as DFStatement;
 use datafusion::sql::sqlparser::dialect::FunctionStreamDialect;

@@ -17,12 +17,12 @@ use datafusion::common::{DFSchemaRef, Result, TableReference, plan_err};
 use datafusion::logical_expr::{Expr, LogicalPlan, UserDefinedLogicalNodeCore};
 use prost::Message;
 
-use crate::multifield_partial_ord;
 use crate::common::constants::extension_node;
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::logical_node::debezium::DebeziumSchemaCodec;
 use crate::logical_node::logical::{LogicalNode, OperatorName};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::schema::SourceTable;
 use crate::schema::utils::add_timestamp_field;
 use crate::types::build_df_schema;

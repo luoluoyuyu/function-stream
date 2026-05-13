@@ -17,12 +17,12 @@ use datafusion::common::{DFSchemaRef, Result, TableReference, plan_err};
 use datafusion::logical_expr::{Expr, Extension, LogicalPlan, UserDefinedLogicalNodeCore};
 use prost::Message;
 
-use crate::multifield_partial_ord;
 use crate::common::constants::extension_node;
 use crate::common::{FsSchema, FsSchemaRef, UPDATING_META_FIELD};
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::schema::CatalogEntity;
 use crate::schema::catalog::ExternalTable;
 

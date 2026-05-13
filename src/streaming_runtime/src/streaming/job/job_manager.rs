@@ -31,6 +31,8 @@ use crate::config::{
     DEFAULT_PIPELINE_PARALLELISM,
 };
 use crate::memory::global_memory_pool;
+use crate::sql::logical_node::logical::OperatorName;
+use crate::stream_catalog::CatalogManager;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::{ConstructedOperator, Operator};
 use crate::streaming::api::source::SourceOperator;
@@ -44,8 +46,6 @@ use crate::streaming::network::endpoint::{BoxedEventStream, PhysicalSender};
 use crate::streaming::protocol::control::{ControlCommand, JobMasterEvent, StopMode};
 use crate::streaming::protocol::event::CheckpointBarrier;
 use crate::streaming::state::{IoManager, IoPool, NoopMetricsCollector};
-use crate::sql::logical_node::logical::OperatorName;
-use crate::stream_catalog::CatalogManager;
 
 #[derive(Debug, Clone)]
 pub struct StreamingJobSummary {

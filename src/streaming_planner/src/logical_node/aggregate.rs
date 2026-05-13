@@ -30,7 +30,6 @@ use protocol::function_stream_graph::{
     SessionWindowAggregateOperator, SlidingWindowAggregateOperator, TumblingWindowAggregateOperator,
 };
 
-use crate::multifield_partial_ord;
 use crate::common::constants::{extension_node, proto_operator_name};
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
@@ -38,6 +37,7 @@ use crate::logical_node::{
     CompiledTopologyNode, StreamingOperatorBlueprint, SystemTimestampInjectorNode,
 };
 use crate::logical_planner::planner::{NamedNode, Planner, SplitPlanOutput};
+use crate::multifield_partial_ord;
 use crate::physical::{StreamingExtensionCodec, window};
 use crate::types::{
     QualifiedField, TIMESTAMP_FIELD, WindowBehavior, WindowType, build_df_schema,

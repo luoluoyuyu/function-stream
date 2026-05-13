@@ -16,10 +16,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::streaming::job::JobManager;
-use crate::wasm::taskexecutor::TaskManager;
 use crate::sql::schema::StreamSchemaProvider;
 use crate::stream_catalog::CatalogManager;
+use crate::streaming::job::JobManager;
+use crate::wasm::taskexecutor::TaskManager;
 
 /// Dependencies shared by analyze / plan / execute, analogous to installing globals in
 /// [`TaskManager`], [`CatalogManager`], and [`JobManager`].

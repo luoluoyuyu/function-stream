@@ -15,8 +15,8 @@ use std::fmt::Formatter;
 use datafusion::common::{DFSchemaRef, Result, TableReference, internal_err};
 use datafusion::logical_expr::{Expr, LogicalPlan, UserDefinedLogicalNodeCore};
 
-use crate::multifield_partial_ord;
 use crate::common::constants::extension_node;
+use crate::multifield_partial_ord;
 use crate::schema::utils::{add_timestamp_field, has_timestamp_field};
 
 // -----------------------------------------------------------------------------

@@ -24,8 +24,8 @@ use datafusion_proto::protobuf::PhysicalPlanNode;
 use futures::StreamExt;
 use prost::Message;
 
-use crate::streaming::factory::Registry;
 use crate::sql::physical::{StreamingDecodingContext, StreamingExtensionCodec};
+use crate::streaming::factory::Registry;
 
 pub struct StatelessPhysicalExecutor {
     batch: Arc<RwLock<Option<RecordBatch>>>,

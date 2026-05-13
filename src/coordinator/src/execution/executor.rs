@@ -31,13 +31,13 @@ use crate::coordinator::statement::{ConfigSource, FunctionSource};
 use crate::coordinator::streaming_table_options::{
     parse_checkpoint_interval_ms, parse_pipeline_parallelism,
 };
-use crate::streaming::job::JobManager;
-use crate::streaming::protocol::control::StopMode;
-use crate::wasm::taskexecutor::TaskManager;
 use crate::sql::schema::catalog::ExternalTable;
 use crate::sql::schema::show_create_catalog_table;
 use crate::sql::schema::table::CatalogEntity;
 use crate::stream_catalog::CatalogManager;
+use crate::streaming::job::JobManager;
+use crate::streaming::protocol::control::StopMode;
+use crate::wasm::taskexecutor::TaskManager;
 
 #[derive(Error, Debug)]
 pub enum ExecuteError {

@@ -14,9 +14,9 @@
 
 use std::sync::OnceLock;
 
-use function_stream_config::streaming_job::ResolvedStreamingJobConfig;
 use crate::common::constants::sql_planning_default;
 use crate::types::SqlConfig;
+use function_stream_config::streaming_job::ResolvedStreamingJobConfig;
 
 static SQL_PLANNING: OnceLock<SqlConfig> = OnceLock::new();
 

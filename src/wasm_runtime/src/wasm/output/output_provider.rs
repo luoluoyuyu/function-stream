@@ -60,9 +60,7 @@ impl OutputProvider {
                 runtime: _,
             } => {
                 use crate::output::output_runner::OutputRunner;
-                use crate::output::protocol::kafka::{
-                    KafkaOutputProtocol, KafkaProducerConfig,
-                };
+                use crate::output::protocol::kafka::{KafkaOutputProtocol, KafkaProducerConfig};
 
                 let servers: Vec<String> = bootstrap_servers
                     .split(',')

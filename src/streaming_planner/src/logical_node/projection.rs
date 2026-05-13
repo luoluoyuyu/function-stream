@@ -21,12 +21,12 @@ use prost::Message;
 
 use protocol::function_stream_graph::ProjectionOperator;
 
-use crate::multifield_partial_ord;
 use crate::common::constants::{extension_node, sql_field};
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::types::{QualifiedField, build_df_schema};
 
 // -----------------------------------------------------------------------------

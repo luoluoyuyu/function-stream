@@ -24,7 +24,6 @@ use datafusion_proto::physical_plan::to_proto::serialize_physical_expr;
 use prost::Message;
 use protocol::function_stream_graph::{AsyncUdfOperator, AsyncUdfOrdering};
 
-use crate::multifield_partial_ord;
 use crate::common::constants::extension_node;
 use crate::common::constants::sql_field;
 use crate::common::{FsSchema, FsSchemaRef};
@@ -35,6 +34,7 @@ use crate::logical_node::streaming_operator_blueprint::{
     CompiledTopologyNode, StreamingOperatorBlueprint,
 };
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::types::{QualifiedField, build_df_schema, extract_qualified_fields};
 
 pub const NODE_TYPE_NAME: &str = extension_node::ASYNC_FUNCTION_EXECUTION;

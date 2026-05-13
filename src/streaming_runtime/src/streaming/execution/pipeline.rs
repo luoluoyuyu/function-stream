@@ -14,6 +14,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_stream::{StreamExt, StreamMap};
 use tracing::{Instrument, info, info_span};
 
+use crate::sql::common::Watermark;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::Operator;
 use crate::streaming::error::RunError;
@@ -27,7 +28,6 @@ use crate::streaming::protocol::{
     control::ControlCommand,
     event::{StreamEvent, TrackedEvent},
 };
-use crate::sql::common::Watermark;
 
 pub struct Pipeline {
     chain_head: Box<dyn OperatorDrive>,

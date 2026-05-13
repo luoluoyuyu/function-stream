@@ -23,12 +23,12 @@ use prost::Message;
 use protocol::function_stream_graph;
 use protocol::function_stream_graph::{ConnectorOp, LookupJoinCondition, LookupJoinOperator};
 
-use crate::multifield_partial_ord;
 use crate::common::constants::extension_node;
 use crate::common::{FsSchema, FsSchemaRef};
 use crate::logical_node::logical::{LogicalEdge, LogicalEdgeType, LogicalNode, OperatorName};
 use crate::logical_node::{CompiledTopologyNode, StreamingOperatorBlueprint};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::schema::LookupTable;
 use crate::schema::utils::add_timestamp_field_arrow;
 

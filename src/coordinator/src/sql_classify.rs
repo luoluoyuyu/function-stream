@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use datafusion::common::{plan_err, Result};
+use datafusion::common::{Result, plan_err};
 use datafusion::error::DataFusionError;
 use datafusion::sql::sqlparser::ast::{
     ObjectType, ShowCreateObject, SqlOption, Statement as DFStatement,
@@ -50,9 +50,9 @@ pub fn classify_statement(stmt: DFStatement) -> Result<Box<dyn Statement>> {
         DFStatement::ShowStreamingTable => Ok(Box::new(ShowStreamingTables::new())),
         DFStatement::ShowCreate { obj_type, obj_name } => match obj_type {
             ShowCreateObject::Table => Ok(Box::new(ShowCreateTable::new(obj_name.to_string()))),
-            ShowCreateObject::StreamingTable => {
-                Ok(Box::new(ShowCreateStreamingTable::new(obj_name.to_string())))
-            }
+            ShowCreateObject::StreamingTable => Ok(Box::new(ShowCreateStreamingTable::new(
+                obj_name.to_string(),
+            ))),
             _ => plan_err!(
                 "SHOW CREATE {obj_type} is not supported; use SHOW CREATE TABLE or SHOW CREATE STREAMING TABLE <name>"
             ),
@@ -88,11 +88,12 @@ pub fn classify_statement(stmt: DFStatement) -> Result<Box<dyn Statement>> {
                     }
                     let table_name = names[0].to_string();
                     Ok(Box::new(DropStreamingTableStatement::new(
-                        table_name,
-                        *if_exists,
+                        table_name, *if_exists,
                     )))
                 }
-                _ => plan_err!("Only DROP TABLE and DROP STREAMING TABLE are supported in this SQL frontend"),
+                _ => plan_err!(
+                    "Only DROP TABLE and DROP STREAMING TABLE are supported in this SQL frontend"
+                ),
             }
         }
         DFStatement::Insert { .. } => plan_err!(

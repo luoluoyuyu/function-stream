@@ -107,9 +107,8 @@ pub trait StateStore: Send + Sync {
         user_key: Vec<u8>,
         value: Vec<u8>,
     ) -> Result<(), BackendError> {
-        let key_bytes = crate::state_backend::key_builder::build_key(
-            &key_group, &key, &namespace, &user_key,
-        );
+        let key_bytes =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &user_key);
         self.put_state(key_bytes, value)
     }
 
@@ -132,9 +131,8 @@ pub trait StateStore: Send + Sync {
         namespace: Vec<u8>,
         user_key: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, BackendError> {
-        let key_bytes = crate::state_backend::key_builder::build_key(
-            &key_group, &key, &namespace, &user_key,
-        );
+        let key_bytes =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &user_key);
         self.get_state(key_bytes)
     }
 
@@ -156,9 +154,8 @@ pub trait StateStore: Send + Sync {
         namespace: Vec<u8>,
         user_key: Vec<u8>,
     ) -> Result<(), BackendError> {
-        let key_bytes = crate::state_backend::key_builder::build_key(
-            &key_group, &key, &namespace, &user_key,
-        );
+        let key_bytes =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &user_key);
         self.delete_state(key_bytes)
     }
 
@@ -199,12 +196,8 @@ pub trait StateStore: Send + Sync {
         key: Vec<u8>,
         namespace: Vec<u8>,
     ) -> Result<usize, BackendError> {
-        let prefix_bytes = crate::state_backend::key_builder::build_key(
-            &key_group,
-            &key,
-            &namespace,
-            &[],
-        );
+        let prefix_bytes =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &[]);
         self.delete_prefix_bytes(prefix_bytes)
     }
 
@@ -279,12 +272,8 @@ pub trait StateStore: Send + Sync {
         key: Vec<u8>,
         namespace: Vec<u8>,
     ) -> Result<Box<dyn StateIterator>, BackendError> {
-        let prefix = crate::state_backend::key_builder::build_key(
-            &key_group,
-            &key,
-            &namespace,
-            &[],
-        );
+        let prefix =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &[]);
         self.scan(prefix)
     }
 }

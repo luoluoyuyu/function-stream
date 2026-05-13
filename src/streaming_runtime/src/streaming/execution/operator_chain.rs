@@ -13,6 +13,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 
+use crate::sql::common::CheckpointBarrier;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::{Collector, Operator};
 use crate::streaming::error::RunError;
@@ -20,7 +21,6 @@ use crate::streaming::protocol::{
     control::{ControlCommand, StopMode},
     event::{StreamEvent, StreamOutput, TrackedEvent},
 };
-use crate::sql::common::CheckpointBarrier;
 
 // ============================================================================
 // Core Traits

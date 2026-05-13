@@ -24,6 +24,7 @@ use protocol::function_stream_graph::{
 };
 use tracing::info;
 
+use crate::sql::common::FsSchema;
 use crate::streaming::api::operator::ConstructedOperator;
 use crate::streaming::api::source::SourceOffset;
 use crate::streaming::factory::global::Registry;
@@ -33,10 +34,7 @@ use crate::streaming::format::{
     Format as RuntimeFormat, JsonFormat as RuntimeJsonFormat, TimestampFormat as RtTimestampFormat,
 };
 use crate::streaming::operators::sink::kafka::{ConsistencyMode, KafkaSinkOperator};
-use crate::streaming::operators::source::kafka::{
-    BufferedDeserializer, KafkaSourceOperator,
-};
-use crate::sql::common::FsSchema;
+use crate::streaming::operators::source::kafka::{BufferedDeserializer, KafkaSourceOperator};
 
 const DEFAULT_SOURCE_BATCH_SIZE: usize = 1024;
 

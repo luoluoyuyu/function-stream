@@ -10,8 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::streaming::protocol::event::{merge_watermarks, watermark_strictly_advances};
 use crate::sql::common::Watermark;
+use crate::streaming::protocol::event::{merge_watermarks, watermark_strictly_advances};
 
 #[derive(Debug)]
 pub struct WatermarkTracker {

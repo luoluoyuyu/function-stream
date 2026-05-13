@@ -19,8 +19,8 @@ use super::proto_codec::{
     encode_task_module_bytes,
 };
 use super::storage::{StoredTaskInfo, TaskStorage};
-use crate::config::storage::RocksDBStorageConfig;
 use crate::common::ComponentState;
+use crate::config::storage::RocksDBStorageConfig;
 use anyhow::{Context, Result, anyhow};
 use rocksdb::{ColumnFamilyDescriptor, DB, IteratorMode, Options, WriteBatch};
 use std::path::Path;

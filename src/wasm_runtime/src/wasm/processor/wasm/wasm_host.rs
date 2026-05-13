@@ -12,8 +12,8 @@
 
 use crate::output::Output;
 use crate::processor::wasm::wasm_cache;
-use crate::wasm::buffer_and_event::BufferOrEvent;
 use crate::state_backend::{StateStore, StateStoreFactory};
+use crate::wasm::buffer_and_event::BufferOrEvent;
 use std::sync::{Arc, OnceLock};
 use wasmtime::component::{Component, HasData, Linker, Resource, bindgen};
 use wasmtime::{Config, Engine, Store};

@@ -17,7 +17,7 @@ use arrow_ipc::reader::StreamReader;
 use arrow_schema::DataType;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table, TableComponent};
-use protocol::cli::{function_stream_service_client::FunctionStreamServiceClient, SqlRequest};
+use protocol::cli::{SqlRequest, function_stream_service_client::FunctionStreamServiceClient};
 use rustyline::error::ReadlineError;
 use rustyline::{Config, DefaultEditor, EditMode};
 use std::fmt;
@@ -243,11 +243,7 @@ impl Repl {
             }
         }
 
-        if has_rows {
-            Ok(Some(table))
-        } else {
-            Ok(None)
-        }
+        if has_rows { Ok(Some(table)) } else { Ok(None) }
     }
 
     fn extract_value(&self, column: &dyn Array, row: usize) -> String {
@@ -317,7 +313,7 @@ impl Repl {
 
         #[cfg(unix)]
         let mut sigterm = {
-            use tokio::signal::unix::{signal, SignalKind};
+            use tokio::signal::unix::{SignalKind, signal};
             signal(SignalKind::terminate()).expect("failed to register SIGTERM handler")
         };
 
@@ -403,9 +399,7 @@ impl Repl {
             println!();
         }
 
-        if !skip_save_history
-            && let Some(ref mut ed) = repl.lock().await.editor
-        {
+        if !skip_save_history && let Some(ref mut ed) = repl.lock().await.editor {
             let _ = ed.save_history(".function-stream-cli-history");
         }
         Ok(())

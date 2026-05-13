@@ -13,9 +13,7 @@
 use crate::config::storage::{StateStorageConfig, StateStorageType};
 use crate::config::{get_state_dir, get_state_dir_for_base};
 use crate::state_backend::error::BackendError;
-use crate::state_backend::factory::{
-    FactoryType, StateStoreFactory, get_factory_for_task,
-};
+use crate::state_backend::factory::{FactoryType, StateStoreFactory, get_factory_for_task};
 use crate::state_backend::rocksdb::RocksDBConfig;
 use std::fs;
 use std::path::PathBuf;

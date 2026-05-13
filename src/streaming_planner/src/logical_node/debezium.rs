@@ -19,10 +19,10 @@ use datafusion::common::{
 use datafusion::logical_expr::{Expr, LogicalPlan, UserDefinedLogicalNodeCore};
 use datafusion::physical_plan::DisplayAs;
 
-use crate::multifield_partial_ord;
 use crate::common::constants::{cdc, extension_node};
 use crate::common::{FsSchema, FsSchemaRef, UPDATING_META_FIELD};
 use crate::logical_planner::planner::{NamedNode, Planner};
+use crate::multifield_partial_ord;
 use crate::physical::updating_meta_field;
 use crate::types::TIMESTAMP_FIELD;
 

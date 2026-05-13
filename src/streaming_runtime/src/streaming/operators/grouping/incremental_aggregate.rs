@@ -41,6 +41,10 @@ use std::{collections::HashMap, mem, sync::Arc};
 use tracing::{debug, info, warn};
 // =========================================================================
 // =========================================================================
+use crate::sql::common::{
+    CheckpointBarrier, FsSchema, TIMESTAMP_FIELD, UPDATING_META_FIELD, Watermark, to_nanos,
+};
+use crate::sql::physical::updating_meta_fields;
 use crate::streaming::StreamOutput;
 use crate::streaming::api::context::TaskContext;
 use crate::streaming::api::operator::{Collector, Operator};
@@ -48,10 +52,6 @@ use crate::streaming::factory::Registry;
 use crate::streaming::operators::{Key, UpdatingCache};
 use crate::streaming::state::OperatorStateStore;
 use crate::util::decode_aggregate;
-use crate::sql::common::{
-    CheckpointBarrier, FsSchema, TIMESTAMP_FIELD, UPDATING_META_FIELD, Watermark, to_nanos,
-};
-use crate::sql::physical::updating_meta_fields;
 
 #[derive(Debug, Copy, Clone)]
 struct BatchData {

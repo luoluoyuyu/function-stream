@@ -18,8 +18,8 @@ mod execution;
 mod execution_context;
 mod plan;
 mod runtime_context;
-mod statement;
 mod sql_classify;
+mod statement;
 mod streaming_table_options;
 mod tool;
 

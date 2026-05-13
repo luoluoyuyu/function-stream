@@ -94,9 +94,8 @@ impl StateStore for MemoryStateStore {
         user_key: Vec<u8>,
         value: Vec<u8>,
     ) -> Result<(), BackendError> {
-        let key_bytes = crate::state_backend::key_builder::build_key(
-            &key_group, &key, &namespace, &user_key,
-        );
+        let key_bytes =
+            crate::state_backend::key_builder::build_key(&key_group, &key, &namespace, &user_key);
 
         let existing = self.get_state(key_bytes.clone())?;
 
