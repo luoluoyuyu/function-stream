@@ -13,7 +13,7 @@
 #![allow(dead_code)]
 
 pub use function_stream_config as config;
-#[path = "../../coordinator/src/legacy/mod.rs"]
+#[path = "../../coordinator/src/coordinator_body.rs"]
 mod coordinator;
 pub use function_stream_logger as logging;
 
@@ -74,7 +74,7 @@ pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow
     CatalogManager::init_global(store).context("Stream catalog (CatalogManager) global init failed")
 }
 
-#[path = "../../servicer/src/legacy/mod.rs"]
+#[path = "../../servicer/src/servicer_body.rs"]
 mod server;
 pub use function_stream_streaming_planner as sql;
 use std::thread;

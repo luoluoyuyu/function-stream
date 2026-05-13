@@ -1,8 +1,0 @@
-[package]
-name = "function-stream-job-manager"
-version.workspace = true
-edition.workspace = true
-
-[lib]
-name = "function_stream_job_manager"
-path = "src/lib.rs"

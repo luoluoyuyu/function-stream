@@ -10,6 +10,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(dead_code)] // Planner keeps helpers/types for upcoming features; strict -D dead_code is noisy.
+
 //! Streaming SQL planning (logical graph, connectors, schema, physical codec).
 //!
 //! The `function-stream` binary/library re-exports this crate as `function_stream::sql` for

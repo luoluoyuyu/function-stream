@@ -158,17 +158,17 @@ impl Repl {
         }
 
         // 3. Strict Data Check: Only proceed if data is explicitly present and non-empty
-        if let Some(bytes) = response.data {
-            if !bytes.is_empty() {
-                // format_arrow_data returns Ok(Some(Table)) ONLY if row_count > 0
-                match self.format_arrow_data(&bytes) {
-                    Ok(Some(table)) => println!("{}", table),
-                    Ok(None) => {
-                        // Data was present but contained 0 rows (e.g., empty result set)
-                        // We print nothing here to keep output clean as requested
-                    }
-                    Err(e) => eprintln!("Failed to parse result data: {}", e),
+        if let Some(bytes) = response.data
+            && !bytes.is_empty()
+        {
+            // format_arrow_data returns Ok(Some(Table)) ONLY if row_count > 0
+            match self.format_arrow_data(&bytes) {
+                Ok(Some(table)) => println!("{}", table),
+                Ok(None) => {
+                    // Data was present but contained 0 rows (e.g., empty result set)
+                    // We print nothing here to keep output clean as requested
                 }
+                Err(e) => eprintln!("Failed to parse result data: {}", e),
             }
         }
 
@@ -403,10 +403,10 @@ impl Repl {
             println!();
         }
 
-        if !skip_save_history {
-            if let Some(ref mut ed) = repl.lock().await.editor {
-                let _ = ed.save_history(".function-stream-cli-history");
-            }
+        if !skip_save_history
+            && let Some(ref mut ed) = repl.lock().await.editor
+        {
+            let _ = ed.save_history(".function-stream-cli-history");
         }
         Ok(())
     }
@@ -448,10 +448,10 @@ impl Repl {
     }
 
     fn add_history_entry(&mut self, entry: &str) {
-        if let Some(ed) = self.editor.as_mut() {
-            if !entry.trim().is_empty() {
-                let _ = ed.add_history_entry(entry.trim());
-            }
+        if let Some(ed) = self.editor.as_mut()
+            && !entry.trim().is_empty()
+        {
+            let _ = ed.add_history_entry(entry.trim());
         }
     }
 

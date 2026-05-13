@@ -19,7 +19,7 @@ use std::sync::Arc;
 use anyhow::Context;
 
 pub use function_stream_config as config;
-#[path = "../../coordinator/src/legacy/mod.rs"]
+#[path = "../../coordinator/src/coordinator_body.rs"]
 pub mod coordinator;
 pub use function_stream_logger as logging;
 
@@ -79,6 +79,6 @@ pub fn initialize_stream_catalog(config: &crate::config::GlobalConfig) -> anyhow
     CatalogManager::init_global(store).context("Stream catalog (CatalogManager) global init failed")
 }
 
-#[path = "../../servicer/src/legacy/mod.rs"]
+#[path = "../../servicer/src/servicer_body.rs"]
 pub mod server;
 pub use function_stream_streaming_planner as sql;

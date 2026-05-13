@@ -3892,10 +3892,6 @@ name = "function-stream-coordinator"
 version = "0.6.0"
 
 [[package]]
-name = "function-stream-job-manager"
-version = "0.6.0"
-
-[[package]]
 name = "function-stream-logger"
 version = "0.6.0"
 dependencies = [

@@ -8,7 +8,6 @@ members = [
     "src/common",
     "src/config",
     "src/coordinator",
-    "src/job_manager",
     "src/logger",
     "src/runtime_common",
     "src/servicer",
