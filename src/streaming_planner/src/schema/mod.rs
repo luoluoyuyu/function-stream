@@ -24,7 +24,8 @@ pub mod utils;
 pub use catalog::{ExternalTable, LookupTable, SinkTable, SourceTable};
 pub use column_descriptor::ColumnDescriptor;
 pub use introspection::{
-    catalog_table_row_detail, schema_columns_one_line, show_create_catalog_table,
+    catalog_table_row_detail, schema_columns_one_line, show_create_catalog_table, DdlCompiler,
+    try_compile_connector_create_table,
 };
 pub use schema_provider::{ObjectName, StreamPlanningContext, StreamSchemaProvider, StreamTable};
 pub use table::CatalogEntity;

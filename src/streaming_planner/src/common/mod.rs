@@ -16,6 +16,7 @@
 //! analogous to `arroyo-types` + `arroyo-rpc` in Arroyo.
 
 pub mod arrow_ext;
+pub mod ast_utils;
 pub mod connector_options;
 pub mod constants;
 pub mod control;
@@ -38,6 +39,7 @@ pub use function_stream_runtime_common::streaming_protocol::{CheckpointBarrier, 
 pub use time_utils::{from_nanos, to_micros, to_millis, to_nanos};
 
 // ── Re-exports from new modules ──
+pub use ast_utils::AstUtils;
 pub use connector_options::ConnectorOptions;
 pub use formats::{BadData, Format, Framing, JsonCompression, JsonFormat};
 pub use fs_schema::{FsSchema, FsSchemaRef};

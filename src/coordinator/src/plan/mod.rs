@@ -10,12 +10,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod ast_utils;
 mod compile_error_plan;
 mod create_function_plan;
 mod create_python_function_plan;
 mod create_table_plan;
-mod ddl_compiler;
 mod drop_function_plan;
 mod drop_streaming_table_plan;
 mod drop_table_plan;

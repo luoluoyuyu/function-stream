@@ -10,10 +10,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod ddl_compiler;
 pub mod ddl_formatter;
 pub mod show_formatter;
 pub mod stream_formatter;
 
+pub use ddl_compiler::{DdlCompiler, try_compile_connector_create_table};
 #[allow(unused_imports)]
 pub use ddl_formatter::{DdlBuilder, format_data_type, schema_columns_one_line};
 pub use show_formatter::{catalog_table_row_detail, show_create_catalog_table};

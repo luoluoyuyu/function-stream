@@ -11,7 +11,6 @@
 // limitations under the License.
 
 use datafusion::sql::sqlparser::ast::{ObjectType, Statement as DFStatement};
-use sqlparser::ast::Statement;
 use tracing::debug;
 
 use crate::coordinator::analyze::analysis::Analysis;
@@ -28,9 +27,8 @@ use crate::coordinator::statement::{
     StatementVisitorResult, StopFunction, StreamingTableStatement,
 };
 use crate::sql::analysis::StreamSchemaProvider;
+use crate::sql::schema::try_compile_connector_create_table;
 
-use super::ast_utils::AstUtils;
-use super::ddl_compiler::DdlCompiler;
 use super::streaming_compiler::StreamingCompiler;
 
 #[derive(Clone)]
@@ -135,15 +133,12 @@ impl StatementVisitor for LogicalPlanVisitor {
         stmt: &CreateTable,
         _ctx: &StatementVisitorContext,
     ) -> StatementVisitorResult {
-        if let Statement::CreateTable(ast_node) = &stmt.statement
-            && ast_node.query.is_none()
-            && AstUtils::contains_connector_property(&ast_node.with_options)
+        if let Some(result) =
+            try_compile_connector_create_table(&self.schema_provider, &stmt.statement)
         {
-            let declared_role = AstUtils::peek_table_role(&ast_node.with_options);
-            let compiler = DdlCompiler::new(&self.schema_provider);
-            return match compiler.compile(ast_node, declared_role.as_deref()) {
-                Ok(external_table) => StatementVisitorResult::Plan(Box::new(
-                    CreateTablePlan::external_table(external_table, ast_node.if_not_exists),
+            return match result {
+                Ok((external_table, if_not_exists)) => StatementVisitorResult::Plan(Box::new(
+                    CreateTablePlan::external_table(external_table, if_not_exists),
                 )),
                 Err(err) => StatementVisitorResult::Plan(Box::new(CompileErrorPlan::new(format!(
                     "Ingest table resolution failed - {err:#}"

@@ -22,21 +22,21 @@ use datafusion::sql::TableReference;
 use datafusion::sql::planner::{PlannerContext, SqlToRel};
 use datafusion::sql::sqlparser::ast;
 use datafusion::sql::sqlparser::ast::CreateTable as SqlCreateTable;
+use datafusion::sql::sqlparser::ast::Statement as DfStatement;
 use datafusion_expr::ExprSchemable;
 use tracing::warn;
 
-use super::ast_utils::AstUtils;
-use crate::coordinator::tool::ConnectorOptions;
-use crate::sql::analysis::StreamSchemaProvider;
-use crate::sql::common::constants::{connection_table_role, connector_type, sql_field};
-use crate::sql::common::with_option_keys as opt;
-use crate::sql::common::{BadData, Format, Framing, JsonCompression, JsonFormat};
-use crate::sql::connector::registry::REGISTRY;
-use crate::sql::schema::ColumnDescriptor;
-use crate::sql::schema::catalog::{ExternalTable, LookupTable, SourceTable};
-use crate::sql::schema::data_encoding_format::DataEncodingFormat;
-use crate::sql::schema::table_role::{apply_adapter_specific_rules, validate_adapter_availability};
-use crate::sql::schema::temporal_pipeline_config::TemporalPipelineConfig;
+use crate::common::ast_utils::AstUtils;
+use crate::common::constants::{connection_table_role, connector_type, sql_field};
+use crate::common::with_option_keys as opt;
+use crate::common::{BadData, ConnectorOptions, Format, Framing, JsonCompression, JsonFormat};
+use crate::connector::registry::REGISTRY;
+use crate::schema::ColumnDescriptor;
+use crate::schema::catalog::{ExternalTable, LookupTable, SourceTable};
+use crate::schema::data_encoding_format::DataEncodingFormat;
+use crate::schema::schema_provider::StreamSchemaProvider;
+use crate::schema::table_role::{apply_adapter_specific_rules, validate_adapter_availability};
+use crate::schema::temporal_pipeline_config::TemporalPipelineConfig;
 
 pub struct DdlCompiler<'a> {
     schema_provider: &'a StreamSchemaProvider,
@@ -291,6 +291,30 @@ impl<'a> DdlCompiler<'a> {
         }
         Ok(())
     }
+}
+
+/// If `stmt` is `CREATE TABLE ... WITH (connector = ...)`, compile it to [`ExternalTable`].
+pub fn try_compile_connector_create_table(
+    schema_provider: &StreamSchemaProvider,
+    stmt: &DfStatement,
+) -> Option<Result<(ExternalTable, bool)>> {
+    let DfStatement::CreateTable(ast_node) = stmt else {
+        return None;
+    };
+    if ast_node.query.is_some() {
+        return None;
+    }
+    if !AstUtils::contains_connector_property(&ast_node.with_options) {
+        return None;
+    }
+    let declared_role = AstUtils::peek_table_role(&ast_node.with_options);
+    let if_not_exists = ast_node.if_not_exists;
+    let compiler = DdlCompiler::new(schema_provider);
+    Some(
+        compiler
+            .compile(ast_node, declared_role.as_deref())
+            .map(|table| (table, if_not_exists)),
+    )
 }
 
 fn resolve_source_watermark(

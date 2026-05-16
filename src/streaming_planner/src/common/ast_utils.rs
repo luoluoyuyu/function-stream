@@ -20,7 +20,7 @@
 use datafusion::common::{Result, plan_err};
 use datafusion::sql::sqlparser::ast::{Expr as SqlExpr, SqlOption, TableConstraint};
 
-use crate::sql::common::with_option_keys as opt;
+use crate::common::with_option_keys as opt;
 
 /// Namespace for AST extraction helpers.
 pub struct AstUtils;
